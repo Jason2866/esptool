@@ -98,13 +98,13 @@ jobs:
           git commit --allow-empty --allow-empty-message -m ""
       - name: Get branch  
         uses: jason2866/branch-name@master
-      - run: echo ${BRANCH_NAME}
+      - run: echo "brnch=${BRANCH_NAME}" >> $GITHUB_ENV
       - name: Push to current branch
         if: matrix.os == 'ubuntu-latest'
         uses: ad-m/github-push-action@master
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${BRANCH_NAME}
+          branch: ${{ env.brnch }}
 
   create_release:
     name: Create GitHub release
