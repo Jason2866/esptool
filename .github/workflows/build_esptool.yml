@@ -97,7 +97,7 @@ jobs:
         uses: ad-m/github-push-action@master
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${{ github.ref }}
+          branch: release/v4
 
   create_release:
     name: Create GitHub release
