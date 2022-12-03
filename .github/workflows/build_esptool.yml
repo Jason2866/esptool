@@ -30,8 +30,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@master
-        with:
-          fetch-depth: 0
       - name: Set up Python 3.8
         uses: actions/setup-python@master
         with:
@@ -53,21 +51,12 @@ jobs:
           export PATH=$PATH:$ESP8266_BINDIR:$ESP32_BINDIR:$ESP32S2_BINDIR:$ESP32S3_BINDIR:$ESP32C3_BINDIR
           ./test/ci/setup_ci_build_env.sh
           make -C flasher_stub V=1
-      - name: Move new stubs in directory
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          rm ./esptool/targets/stub_flasher/*
-          cp -R /home/runner/work/esptool/esptool/flasher_stub/build/*.json ./esptool/targets/stub_flasher
-          ls -R ./esptool/targets/stub_flasher
       - name: Archive stubs artifact
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@master
         with:
           name: stubs
           path: /home/runner/work/esptool/esptool/flasher_stub/build
-      - name: Reinstall esptool
-        run: |
-          pip install --user -e .
       - name: Build with PyInstaller
         run: |
           pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=build_tools/espressif.ico --add-data=".${{ env.STUBS_DIR }}*.json${{ matrix.SEPARATOR }}${{ env.STUBS_DIR }}" esptool.py
@@ -95,6 +84,24 @@ jobs:
     needs: build-esptool-binaries
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@master
+        with:
+          fetch-depth: 0
+      - name: Download builded stubs
+        uses: actions/download-artifact@master
+        with:
+          name: stubs
+          path: ./mv_stubs
+      - name: Display structure of downloaded files
+        run: |
+          ls -R
+        working-directory: ./mv_stubs
+      - name: Move stubs in folder
+        run: |
+          rm ./esptool/targets/stub_flasher/*
+          cp -R /home/runner/work/esptool/esptool/flasher_stub/build/*.json ./esptool/targets/stub_flasher
+          ls -R ./esptool/targets/stub_flasher
       - name: Init git
         run: |
           git config --local user.name "Github BUILD"
