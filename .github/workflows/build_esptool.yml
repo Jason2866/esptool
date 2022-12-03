@@ -97,9 +97,10 @@ jobs:
           git add ./esptool/targets/stub_flasher/*
           echo git diff --cached >> diff
           echo $diff
+          echo "dif=${diff}" >> $GITHUB_ENV
       - name: Check for changes in stub files    
-        #if: $diff != ''
-        run: git commit --allow-empty --allow-empty-message -m ""
+        if: contains(${{ env.dif }}, 'json')
+        run: git commit --allow-empty -m "stubs updated"
       - name: Get branch  
         uses: jason2866/branch-name@master
       - run: echo "brnch=${BRANCH_NAME}" >> $GITHUB_ENV
