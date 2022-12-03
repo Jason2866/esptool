@@ -58,7 +58,7 @@ jobs:
           ls -R
           ls ./esptool/targets/stub_flasher/
           rm ./esptool/targets/stub_flasher/*
-          cp ./esptool/flasher_stub/build ./esptool/targets/stub_flasher
+          cp  ./flasher_stub/build ./esptool/targets/stub_flasher
       - name: Archive stubs artifact
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@master
