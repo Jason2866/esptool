@@ -58,7 +58,7 @@ jobs:
           path: ${{ env.DISTPATH }}
 
       - name: Build stub
-        if: matrix.os == ubuntu-latest
+        if: matrix.os == 'ubuntu-latest'
         run: |
           export TOOLCHAIN_DIR=$HOME/toolchain
           export ESP8266_BINDIR=$TOOLCHAIN_DIR/xtensa-lx106-elf/bin
