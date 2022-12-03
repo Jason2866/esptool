@@ -82,6 +82,16 @@ jobs:
         with:
           name: ${{ env.DISTPATH }}
           path: ${{ env.DISTPATH }}
+      - name: Commit changed files
+        run: |
+          git config --local user.name "Github BUILD"
+          git config user.email github-actions@github.com
+          git add -f ./*
+          git commit -m ${GITHUB_SHA}
+      - name: Push branch
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
   create_release:
     name: Create GitHub release
