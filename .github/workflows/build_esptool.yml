@@ -83,12 +83,14 @@ jobs:
           name: ${{ env.DISTPATH }}
           path: ${{ env.DISTPATH }}
       - name: Commit changed files
+        if: matrix.os == 'ubuntu-latest'
         run: |
           git config --local user.name "Github BUILD"
           git config user.email github-actions@github.com
           git add -f ./*
           git commit -m ${GITHUB_SHA}
       - name: Push branch
+        if: matrix.os == 'ubuntu-latest'
         uses: ad-m/github-push-action@master
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
