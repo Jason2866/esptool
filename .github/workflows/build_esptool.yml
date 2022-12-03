@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@master
+        with:
+          fetch-depth: 0
       - name: Set up Python 3.8
         uses: actions/setup-python@master
         with:
@@ -94,7 +96,7 @@ jobs:
         uses: ad-m/github-push-action@master
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: 'v4/Tasmota'
+          branch: ${{ github.ref }}
 
   create_release:
     name: Create GitHub release
