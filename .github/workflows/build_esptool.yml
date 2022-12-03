@@ -55,6 +55,7 @@ jobs:
           make -C flasher_stub V=1
           cd flasher_stub && python ./compare_stubs.py
           cd ..
+          ls -R
           ls ./esptool/targets/stub_flasher/
           rm ./esptool/targets/stub_flasher/*
           cp ./esptool/flasher_stub/build ./esptool/targets/stub_flasher
