@@ -106,8 +106,8 @@ jobs:
           git config --local user.name "Github BUILD"
           git config user.email github-actions@github.com
           git add ./esptool/targets/stub_flasher/*
-          echo git diff --cached >> diff
-          #echo $diff
+          git diff --cached >> diff
+          echo $diff
           echo "dif=$diff" >> $GITHUB_ENV
           echo ${{ env.dif }}
       - name: Check for changes in stub files
