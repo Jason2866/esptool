@@ -119,7 +119,7 @@ void handle_flash_read(uint32_t addr, uint32_t len, uint32_t block_size,
       uint32_t n = len - num_sent;
       if (n > block_size) n = block_size;
       #if defined(ESP32S3)
-        if (addr + len > 0x00ffffff)
+        if (addr + len-1 > 0x00ffffff)
           res = SPIRead4B(1, SPI_FLASH_FASTRD_MODE, addr, buf, n);
         else
           res = SPIRead(addr, (uint32_t *)buf, n);
