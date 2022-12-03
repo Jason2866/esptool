@@ -89,23 +89,28 @@ jobs:
         with:
           name: ${{ env.DISTPATH }}
           path: ${{ env.DISTPATH }}
-      - name: Commit changed files
-        if: matrix.os == 'ubuntu-latest'
+
+  push_stubs:
+    name: Commit changed files
+    needs: build-esptool-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Init git
         run: |
           git config --local user.name "Github BUILD"
           git config user.email github-actions@github.com
           git add ./esptool/targets/stub_flasher/*
           echo git diff --cached >> diff
-          echo $diff
-          echo "dif=${diff}" >> $GITHUB_ENV
-      - name: Check for changes in stub files    
+          #echo $diff
+          echo "dif=$diff" >> $GITHUB_ENV
+          echo ${{ env.dif }}
+      - name: Check for changes in stub files
         if: contains(${{ env.dif }}, 'json')
         run: git commit --allow-empty -m "stubs updated"
       - name: Get branch  
         uses: jason2866/branch-name@master
       - run: echo "brnch=${BRANCH_NAME}" >> $GITHUB_ENV
       - name: Push to current branch
-        if: matrix.os == 'ubuntu-latest'
         uses: ad-m/github-push-action@master
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
