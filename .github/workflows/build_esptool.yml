@@ -95,7 +95,7 @@ jobs:
           git config --local user.name "Github BUILD"
           git config user.email github-actions@github.com
           git add ./esptool/targets/stub_flasher/*
-          git commit --allow-empty --allow-empty-message
+          git commit --allow-empty --allow-empty-message -m ""
       - name: Push branch
         if: matrix.os == 'ubuntu-latest'  
         uses: jason2866/branch-name@master
