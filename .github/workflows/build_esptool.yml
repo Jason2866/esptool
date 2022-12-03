@@ -96,10 +96,11 @@ jobs:
           git config user.email github-actions@github.com
           git add ./esptool/targets/stub_flasher/*
           git commit --allow-empty --allow-empty-message -m ""
-      - name: Push branch
+      - name: Get branch
         if: matrix.os == 'ubuntu-latest'  
         uses: jason2866/branch-name@master
-      - name: Push to ${BRANCH_NAME}  
+      - name: Push to current branch
+        if: matrix.os == 'ubuntu-latest'
         uses: ad-m/github-push-action@master
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
