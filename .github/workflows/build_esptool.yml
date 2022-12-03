@@ -1,6 +1,10 @@
 name: Build esptool
 
-on: [push, pull_request]
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+    - '.github/**' # Ignore changes towards the .github directory
 
 jobs:
   build-esptool-binaries:
@@ -91,7 +95,7 @@ jobs:
           git config --local user.name "Github BUILD"
           git config user.email github-actions@github.com
           git add ./esptool/targets/stub_flasher/*
-          git commit --allow-empty -m ${GITHUB_SHA}
+          git commit --allow-empty --allow-empty-message
       - name: Push branch
         if: matrix.os == 'ubuntu-latest'
         uses: ad-m/github-push-action@master
