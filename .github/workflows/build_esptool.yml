@@ -98,7 +98,7 @@ jobs:
           echo git diff --cached >> diff
           echo $diff
       - name: Check for changes in stub files    
-        if: $diff != ''
+        #if: $diff != ''
         run: git commit --allow-empty --allow-empty-message -m ""
       - name: Get branch  
         uses: jason2866/branch-name@master
