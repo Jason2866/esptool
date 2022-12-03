@@ -111,7 +111,7 @@ jobs:
           echo "dif=$diff" >> $GITHUB_ENV
           echo ${{ env.dif }}
       - name: Check for changes in stub files
-        if: contains(${{ env.dif }}, 'json')
+        if: contains(${{ env.dif }}, 'json') == true
         run: git commit --allow-empty -m "stubs updated"
       - name: Get branch  
         uses: jason2866/branch-name@master
