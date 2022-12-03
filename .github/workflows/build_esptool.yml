@@ -89,7 +89,7 @@ jobs:
         run: |
           git config --local user.name "Github BUILD"
           git config user.email github-actions@github.com
-          git add -f ./esptool/targets/stub_flasher/*
+          git add ./esptool/targets/stub_flasher/*
           git commit -m ${GITHUB_SHA}
       - name: Push branch
         if: matrix.os == 'ubuntu-latest'
