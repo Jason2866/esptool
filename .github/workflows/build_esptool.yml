@@ -97,8 +97,7 @@ jobs:
           git add ./esptool/targets/stub_flasher/*
           git commit --allow-empty --allow-empty-message
       - name: Push branch
-        if: matrix.os == 'ubuntu-latest'
-      - name: Get branch name  
+        if: matrix.os == 'ubuntu-latest'  
         uses: jason2866/branch-name@master
       - name: Push to ${BRANCH_NAME}  
         uses: ad-m/github-push-action@master
