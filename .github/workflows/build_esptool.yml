@@ -87,13 +87,14 @@ jobs:
         run: |
           git config --local user.name "Github BUILD"
           git config user.email github-actions@github.com
-          git add -f ./*
+          git add -f ./esptool/targets/stub_flasher/*
           git commit -m ${GITHUB_SHA}
       - name: Push branch
         if: matrix.os == 'ubuntu-latest'
         uses: ad-m/github-push-action@master
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: 'v4/Tasmota'
 
   create_release:
     name: Create GitHub release
