@@ -14,6 +14,7 @@ import espefuse.efuse.esp32 as esp32_efuse
 import espefuse.efuse.esp32c2 as esp32c2_efuse
 import espefuse.efuse.esp32c3 as esp32c3_efuse
 import espefuse.efuse.esp32c6 as esp32c6_efuse
+import espefuse.efuse.esp32h2 as esp32h2_efuse
 import espefuse.efuse.esp32h2beta1 as esp32h2beta1_efuse
 import espefuse.efuse.esp32s2 as esp32s2_efuse
 import espefuse.efuse.esp32s3 as esp32s3_efuse
@@ -49,6 +50,7 @@ SUPPORTED_CHIPS = {
     "esp32c2": DefChip("ESP32-C2", esp32c2_efuse, esptool.targets.ESP32C2ROM),
     "esp32c3": DefChip("ESP32-C3", esp32c3_efuse, esptool.targets.ESP32C3ROM),
     "esp32c6": DefChip("ESP32-C6", esp32c6_efuse, esptool.targets.ESP32C6ROM),
+    "esp32h2": DefChip("ESP32-H2", esp32h2_efuse, esptool.targets.ESP32H2ROM),
     "esp32h2beta1": DefChip(
         "ESP32-H2(beta1)", esp32h2beta1_efuse, esptool.targets.ESP32H2BETA1ROM
     ),
@@ -249,27 +251,28 @@ def main(custom_commandline=None):
     if there_are_multiple_burn_commands_in_args:
         efuses.batch_mode_cnt += 1
 
-    for rem_args in grouped_remaining_args:
-        args, unused_args = parser.parse_known_args(rem_args, namespace=common_args)
-        if args.operation is None:
-            parser.print_help()
-            parser.exit(1)
-        assert len(unused_args) == 0, 'Not all commands were recognized "{}"'.format(
-            unused_args
-        )
+    try:
+        for rem_args in grouped_remaining_args:
+            args, unused_args = parser.parse_known_args(rem_args, namespace=common_args)
+            if args.operation is None:
+                parser.print_help()
+                parser.exit(1)
+            assert (
+                len(unused_args) == 0
+            ), 'Not all commands were recognized "{}"'.format(unused_args)
 
-        operation_func = vars(efuse_operations)[args.operation]
-        # each 'operation' is a module-level function of the same name
-        print('\n=== Run "{}" command ==='.format(args.operation))
-        operation_func(esp, efuses, args)
+            operation_func = vars(efuse_operations)[args.operation]
+            # each 'operation' is a module-level function of the same name
+            print('\n=== Run "{}" command ==='.format(args.operation))
+            operation_func(esp, efuses, args)
 
-    if there_are_multiple_burn_commands_in_args:
-        efuses.batch_mode_cnt -= 1
-        if not efuses.burn_all(check_batch_mode=True):
-            raise esptool.FatalError("BURN was not done")
-
-    if common_args.virt is False:
-        esp._port.close()
+        if there_are_multiple_burn_commands_in_args:
+            efuses.batch_mode_cnt -= 1
+            if not efuses.burn_all(check_batch_mode=True):
+                raise esptool.FatalError("BURN was not done")
+    finally:
+        if not common_args.virt and esp._port:
+            esp._port.close()
 
 
 def _main():
