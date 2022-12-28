@@ -59,10 +59,10 @@ jobs:
           path: /home/runner/work/esptool/esptool/flasher_stub/build
       - name: Build with PyInstaller
         run: |
-          pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=build_tools/espressif.ico --add-data=".${{ env.STUBS_DIR }}*.json${{ matrix.SEPARATOR }}${{ env.STUBS_DIR }}" esptool.py
-          pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=build_tools/espressif.ico espefuse.py
-          pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=build_tools/espressif.ico espsecure.py
-          pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=build_tools/espressif.ico esp_rfc2217_server.py
+          pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico --add-data=".${{ env.STUBS_DIR }}*.json${{ matrix.SEPARATOR }}${{ env.STUBS_DIR }}" esptool.py
+          pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico espefuse.py
+          pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico espsecure.py
+          pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico esp_rfc2217_server.py
       - name: Test binaries
         shell: bash
         run: |
