@@ -49,7 +49,7 @@ jobs:
           export ESP32S3_BINDIR=$TOOLCHAIN_DIR/xtensa-esp32s3-elf/bin
           export ESP32C3_BINDIR=$TOOLCHAIN_DIR/riscv32-esp-elf/bin
           export PATH=$PATH:$ESP8266_BINDIR:$ESP32_BINDIR:$ESP32S2_BINDIR:$ESP32S3_BINDIR:$ESP32C3_BINDIR
-          ./test/ci/setup_ci_build_env.sh
+          ./ci/setup_ci_build_env.sh
           make -C flasher_stub V=1
       - name: Archive stubs artifact
         if: matrix.os == 'ubuntu-latest'
