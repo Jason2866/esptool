@@ -63,7 +63,7 @@ static bool can_use_max_cpu_freq()
   #endif
 }
 
-#if ESP32C6
+#if ESP32C6 || ESP32H2
 static uint32_t pcr_sysclk_conf_reg = 0;
 #else
 static uint32_t cpu_per_conf_reg = 0;
@@ -75,7 +75,7 @@ static void set_max_cpu_freq()
   if (can_use_max_cpu_freq())
   {
     /* Set CPU frequency to max. This also increases SPI speed. */
-    #if ESP32C6
+    #if ESP32C6 || ESP32H2
     pcr_sysclk_conf_reg = READ_REG(PCR_SYSCLK_CONF_REG);
     WRITE_REG(PCR_SYSCLK_CONF_REG, (pcr_sysclk_conf_reg & ~PCR_SOC_CLK_SEL_M) | (PCR_SOC_CLK_MAX << PCR_SOC_CLK_SEL_S));
     #else
@@ -92,7 +92,7 @@ static void reset_cpu_freq()
 {
   /* Restore saved sysclk_conf and cpu_per_conf registers.
      Use only if set_max_cpu_freq() has been called. */
-  #if ESP32C6
+  #if ESP32C6 || ESP32H2
   if (can_use_max_cpu_freq() && pcr_sysclk_conf_reg != 0)
   {
     WRITE_REG(PCR_SYSCLK_CONF_REG, (READ_REG(PCR_SYSCLK_CONF_REG) & ~PCR_SOC_CLK_SEL_M) | (pcr_sysclk_conf_reg & PCR_SOC_CLK_SEL_M));
@@ -485,6 +485,13 @@ void stub_main()
         }
         spi_flash_attach(spiconfig, 0);
 #endif
+#if ESP32S3 && !ESP32S3BETA2
+        // OPI calls are used only for octal chips. However, driver is initialized in all cases in order to avoid
+        // potentional misterious errors originating from ROM assertions.
+        static const esp_rom_opiflash_def_t flash_driver = OPIFLASH_DRIVER();
+        esp_rom_opiflash_legacy_driver_init(&flash_driver);
+        esp_rom_opiflash_wait_idle();
+#endif //ESP32S3 && !ESP32S3BETA2
         SPIParamCfg(0, FLASH_MAX_SIZE, FLASH_BLOCK_SIZE, FLASH_SECTOR_SIZE,
                     FLASH_PAGE_SIZE, FLASH_STATUS_MASK);
 

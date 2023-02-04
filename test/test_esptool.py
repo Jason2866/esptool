@@ -123,7 +123,6 @@ class ESPRFC2217Server(object):
 @pytest.mark.flaky(reruns=1, condition=arg_preload_port is not False)
 class EsptoolTestCase:
     def run_espsecure(self, args):
-
         cmd = [sys.executable, "-m", "espsecure"] + args.split(" ")
         print("\nExecuting {}...".format(" ".join(cmd)))
         try:
@@ -391,6 +390,32 @@ class TestFlashing(EsptoolTestCase):
         self.verify_readback(4096, 50 * 1024, "images/fifty_kb.bin")
         # writing flash the second time shouldn't have corrupted the first time
         self.verify_readback(0, 4096, "images/sector.bin")
+
+    @pytest.mark.skipif(
+        int(os.getenv("ESPTOOL_TEST_FLASH_SIZE", "0")) < 32, reason="needs 32MB flash"
+    )
+    def test_last_bytes_of_32M_flash(self):
+        flash_size = 32 * 1024 * 1024
+        image_size = 1024
+        offset = flash_size - image_size
+        self.run_esptool("write_flash {} images/one_kb.bin".format(hex(offset)))
+        # Some of the functons cannot handle 32-bit addresses - i.e. addresses accessing
+        # the higher 16MB will manipulate with the lower 16MB flash area.
+        offset2 = offset & 0xFFFFFF
+        self.run_esptool("write_flash {} images/one_kb_all_ef.bin".format(hex(offset2)))
+        self.verify_readback(offset, image_size, "images/one_kb.bin")
+
+    @pytest.mark.skipif(
+        int(os.getenv("ESPTOOL_TEST_FLASH_SIZE", "0")) < 32, reason="needs 32MB flash"
+    )
+    def test_write_larger_area_to_32M_flash(self):
+        offset = 18 * 1024 * 1024
+        self.run_esptool("write_flash {} images/one_mb.bin".format(hex(offset)))
+        # Some of the functons cannot handle 32-bit addresses - i.e. addresses accessing
+        # the higher 16MB will manipulate with the lower 16MB flash area.
+        offset2 = offset & 0xFFFFFF
+        self.run_esptool("write_flash {} images/one_kb_all_ef.bin".format(hex(offset2)))
+        self.verify_readback(offset, 1 * 1024 * 1024, "images/one_mb.bin")
 
     def test_correct_offset(self):
         """Verify writing at an offset actually writes to that offset."""
@@ -944,6 +969,8 @@ class TestAutoDetect(EsptoolTestCase):
             "esp32c2": "ESP32-C2",
             "esp32c6": "ESP32-C6",
         }[arg_chip]
+        if arg_chip not in ["esp8266", "esp32", "esp32s2"]:
+            assert "Unsupported detection protocol" not in output
         assert f"Detecting chip type... {expected_chip_name}" in output
         assert f"Chip is {expected_chip_name}" in output
 
@@ -1110,6 +1137,8 @@ class TestConfigFile(EsptoolTestCase):
         with self.ConfigFile(config_file_path, self.dummy_config):
             output = self.run_esptool("version")
             assert f"Loaded custom configuration from {config_file_path}" in output
+            assert "Ignoring unknown config file option" not in output
+            assert "Ignoring invalid config file" not in output
 
         # Test invalid files are ignored
         # Wrong section header, no config gets loaded
@@ -1126,6 +1155,12 @@ class TestConfigFile(EsptoolTestCase):
                 "option 'connect_attempts' in section 'esptool' already exists"
                 in output
             )
+
+        # Correct header, unknown option (or a typo)
+        faulty_config = "[esptool]\n" "connect_attempts = 9\n" "timout = 2\n" "bits = 2"
+        with self.ConfigFile(config_file_path, faulty_config):
+            output = self.run_esptool("version")
+            assert "Ignoring unknown config file options: bits, timout" in output
 
         # Test other config files (setup.cfg, tox.ini) are loaded
         config_file_path = os.path.join(os.getcwd(), "tox.ini")

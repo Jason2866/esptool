@@ -34,12 +34,15 @@ def _validate_config_file(file_path, verbose=False):
         if cfg.has_section("esptool"):
             if verbose:
                 unknown_opts = list(set(cfg.options("esptool")) - set(CONFIG_OPTIONS))
-                suffix = "s" if len(unknown_opts) > 1 else ""
-                print(
-                    "Ignoring unknown config file option{}: {}".format(
-                        suffix, ", ".join(unknown_opts)
+                unknown_opts.sort()
+                no_of_unknown_opts = len(unknown_opts)
+                if no_of_unknown_opts > 0:
+                    suffix = "s" if no_of_unknown_opts > 1 else ""
+                    print(
+                        "Ignoring unknown config file option{}: {}".format(
+                            suffix, ", ".join(unknown_opts)
+                        )
                     )
-                )
             return True
     except (UnicodeDecodeError, configparser.Error) as e:
         if verbose:
