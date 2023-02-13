@@ -422,6 +422,32 @@ def write_flash(esp, args):
                 "Can't perform encrypted flash write, "
                 "consult Flash Encryption documentation for more information"
             )
+    else:
+        if not args.force and esp.CHIP_NAME != "ESP8266":
+            # ESP32 does not support `get_security_info()` and `secure_download_mode`
+            if (
+                esp.CHIP_NAME != "ESP32"
+                and esp.secure_download_mode
+                and bin(esp.get_security_info()["flash_crypt_cnt"]).count("1") & 1 != 0
+            ):
+                raise FatalError(
+                    "WARNING: Detected flash encryption and "
+                    "secure download mode enabled.\n"
+                    "Flashing plaintext binary may brick your device! "
+                    "Use --force to override the warning."
+                )
+
+            if (
+                not esp.secure_download_mode
+                and esp.get_encrypted_download_disabled()
+                and esp.get_flash_encryption_enabled()
+            ):
+                raise FatalError(
+                    "WARNING: Detected flash encryption enabled and "
+                    "download manual encrypt disabled.\n"
+                    "Flashing plaintext binary may brick your device! "
+                    "Use --force to override the warning."
+                )
 
     # verify file sizes fit in flash
     if args.flash_size != "keep":  # TODO: check this even with 'keep'
@@ -1017,7 +1043,7 @@ def flash_id(esp, args):
     flash_type_dict = {0: "quad (4 data lines)", 1: "octal (8 data lines)"}
     flash_type_str = flash_type_dict.get(flash_type)
     if flash_type_str:
-        print(f"Flash type: {flash_type_str}")
+        print(f"Flash type set in eFuse: {flash_type_str}")
 
 
 def read_flash(esp, args):
