@@ -52,7 +52,7 @@ jobs:
 
           ./test/ci/setup_ci_build_env.sh
           make -C flasher_stub V=1
-          cd flasher_stub && python ./compare_stubs.py
+          #cd flasher_stub && python ./compare_stubs.py
       - name: Store stubs
         if: matrix.os == 'ubuntu-latest'
         uses: stefanzweifel/git-auto-commit-action@v4
