@@ -55,11 +55,24 @@
 #define IS_RISCV 1
 #endif // ESP32H2
 
+#ifdef ESP32P4
+// TODO: Add support for USB modes when MP is available
+// #define WITH_USB_JTAG_SERIAL 1
+// #define WITH_USB_OTG 1
+#define IS_RISCV 1
+#endif // ESP32P4
+
 // Increase CPU freq to speed up read/write operations over USB
-#define USE_MAX_CPU_FREQ (WITH_USB_JTAG_SERIAL || WITH_USB_OTG)
+// Disabled on the S3 due to stability issues, would require dbias adjustment.
+// https://github.com/espressif/esptool/issues/832, https://github.com/espressif/esptool/issues/808
+#define USE_MAX_CPU_FREQ ((WITH_USB_JTAG_SERIAL || WITH_USB_OTG) && !ESP32S3)
+
+// Later chips don't support ets_efuse_get_spiconfig.
+#define SUPPORT_CONFIG_SPI (ESP32 || ESP32S2 || ESP32S3 || ESP32S3BETA2 || ESP32C3 || ESP32H2BETA1 || ESP32H2BETA2 || ESP32C6BETA)
 
 /**********************************************************
  * Per-SOC based peripheral register base addresses
+ * Sync with reg_base.h in ESP-IDF
  */
 #ifdef ESP8266
 #define UART_BASE_REG       0x60000000 /* UART0 */
@@ -151,6 +164,13 @@
 #define USB_DEVICE_BASE_REG 0x6000F000
 #define DR_REG_PCR_BASE     0x60096000
 #define DR_REG_LP_WDT_BASE  0x600B1C00
+#endif
+
+#ifdef ESP32P4
+#define UART_BASE_REG       0x500CA000 /* UART0 */
+#define SPI_BASE_REG        0x5008D000 /* SPI peripheral 1, used for SPI flash */
+#define SPI0_BASE_REG       0x5008C000 /* SPI peripheral 0, inner state machine */
+#define GPIO_BASE_REG       0x500E0000
 #endif
 
 /**********************************************************
@@ -323,23 +343,39 @@
 
 #ifdef ESP32S3
 #define RTC_CNTL_OPTION1_REG          (RTCCNTL_BASE_REG + 0x012C)
-#define RTC_CNTL_WDTCONFIG0_REG       (RTCCNTL_BASE_REG + 0x0090)  // RTC_CNTL_RTC_WDTCONFIG0_REG
+#define RTC_CNTL_WDTCONFIG0_REG       (RTCCNTL_BASE_REG + 0x0098)  // RTC_CNTL_RTC_WDTCONFIG0_REG
 #define RTC_CNTL_WDTWPROTECT_REG      (RTCCNTL_BASE_REG + 0x00B0)  // RTC_CNTL_RTC_WDTWPROTECT_REG
+#define RTC_CNTL_SWD_CONF_REG         (RTCCNTL_BASE_REG + 0x00B4)
+#define RTC_CNTL_SWD_WPROTECT_REG     (RTCCNTL_BASE_REG + 0x00B8)
+#define RTC_CNTL_SWD_WKEY             0x8F1D312A
+#define RTC_CNTL_SWD_AUTO_FEED_EN     (1 << 31)
 #endif
 
 #ifdef ESP32C3
 #define RTC_CNTL_WDTCONFIG0_REG       (RTCCNTL_BASE_REG + 0x0090)
 #define RTC_CNTL_WDTWPROTECT_REG      (RTCCNTL_BASE_REG + 0x00A8)
+#define RTC_CNTL_SWD_CONF_REG         (RTCCNTL_BASE_REG + 0x00AC)
+#define RTC_CNTL_SWD_WPROTECT_REG     (RTCCNTL_BASE_REG + 0x00B0)
+#define RTC_CNTL_SWD_WKEY             0x8F1D312A
+#define RTC_CNTL_SWD_AUTO_FEED_EN     (1 << 31)
 #endif
 
 #ifdef ESP32C6
 #define RTC_CNTL_WDTCONFIG0_REG       (DR_REG_LP_WDT_BASE + 0x0)   // LP_WDT_RWDT_CONFIG0_REG
 #define RTC_CNTL_WDTWPROTECT_REG      (DR_REG_LP_WDT_BASE + 0x0018)  // LP_WDT_RWDT_WPROTECT_REG
+#define RTC_CNTL_SWD_CONF_REG         (DR_REG_LP_WDT_BASE + 0x001C)  // LP_WDT_SWD_CONFIG_REG
+#define RTC_CNTL_SWD_WPROTECT_REG     (DR_REG_LP_WDT_BASE + 0x0020)  // LP_WDT_SWD_WPROTECT_REG
+#define RTC_CNTL_SWD_WKEY             0x50D83AA1
+#define RTC_CNTL_SWD_AUTO_FEED_EN     (1 << 18)
 #endif
 
 #ifdef ESP32H2
 #define RTC_CNTL_WDTCONFIG0_REG       (DR_REG_LP_WDT_BASE + 0x0)   // LP_WDT_RWDT_CONFIG0_REG
-#define RTC_CNTL_WDTWPROTECT_REG      (DR_REG_LP_WDT_BASE + 0x0018)  // LP_WDT_RWDT_WPROTECT_REG
+#define RTC_CNTL_WDTWPROTECT_REG      (DR_REG_LP_WDT_BASE + 0x001C)  // LP_WDT_RWDT_WPROTECT_REG
+#define RTC_CNTL_SWD_CONF_REG         (DR_REG_LP_WDT_BASE + 0x0020)  // LP_WDT_SWD_CONFIG_REG
+#define RTC_CNTL_SWD_WPROTECT_REG     (DR_REG_LP_WDT_BASE + 0x0024)  // LP_WDT_SWD_WPROTECT_REG
+#define RTC_CNTL_SWD_WKEY             0x50D83AA1
+#define RTC_CNTL_SWD_AUTO_FEED_EN     (1 << 18)
 #endif
 
 #define RTC_CNTL_WDT_WKEY             0x50D83AA1
@@ -418,3 +454,28 @@
 #if ESP32S3_OR_LATER
 #define SECURITY_INFO_BYTES 20
 #endif // ESP32S3_OR_LATER
+
+/**********************************************************
+ * Per-SOC address of the rom_spiflash_legacy_funcs symbol in ROM
+ * Can be retrieved with gdb: "info address rom_spiflash_legacy_funcs"
+ */
+
+#if ESP32 || ESP32S2 || ESP32S3
+#define ROM_SPIFLASH_LEGACY         0x3ffae270
+#endif // ESP32 || ESP32S2 || ESP32S3
+
+#if ESP32C3 || ESP32C6BETA || ESP32C2 || ESP32C6
+#define ROM_SPIFLASH_LEGACY         0x3fcdfff4
+#endif // ESP32C3 || ESP32C6BETA || ESP32C2 || ESP32C6
+
+#if ESP32H2BETA1 || ESP32H2BETA2
+#define ROM_SPIFLASH_LEGACY         0x3fcdfff0
+#endif // ESP32H2BETA1 || ESP32H2BETA2
+
+#if ESP32H2
+#define ROM_SPIFLASH_LEGACY         0x4084fff0
+#endif // ESP32H2
+
+#if ESP32P4
+#define ROM_SPIFLASH_LEGACY         0x4ff3ffec
+#endif // ESP32P4

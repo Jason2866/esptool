@@ -17,6 +17,7 @@ from .. import util
 from ..base_operations import (
     add_common_commands,
     add_force_write_always,
+    add_show_sensitive_info_option,
     burn_bit,
     burn_block_data,
     burn_efuse,
@@ -55,6 +56,7 @@ def add_commands(subparsers, efuses):
     )
     protect_options(burn_key)
     add_force_write_always(burn_key)
+    add_show_sensitive_info_option(burn_key)
     burn_key.add_argument(
         "block",
         help="Key block to burn",
@@ -105,6 +107,7 @@ def add_commands(subparsers, efuses):
     )
     protect_options(burn_key_digest)
     add_force_write_always(burn_key_digest)
+    add_show_sensitive_info_option(burn_key_digest)
     burn_key_digest.add_argument(
         "block",
         help="Key block to burn",
@@ -191,38 +194,29 @@ def set_flash_voltage(esp, efuses, args):
 def adc_info(esp, efuses, args):
     print("")
     # fmt: off
-    if efuses["BLK_VERSION_MAJOR"].get() == 1:
-        print("Temperature Sensor Calibration = {}C".format(efuses["TEMP_SENSOR_CAL"].get()))
+    if efuses["BLK_VERSION_MINOR"].get() == 1:
+        print("Temperature Sensor Calibration = {}C".format(efuses["TEMP_CALIB"].get()))
 
         print("")
-        print("ADC1 readings stored in efuse BLOCK2:")
-        print("    MODE0 D1 reading  (250mV):  {}".format(efuses["ADC1_MODE0_D1"].get()))
-        print("    MODE0 D2 reading  (600mV):  {}".format(efuses["ADC1_MODE0_D2"].get()))
-
-        print("    MODE1 D1 reading  (250mV):  {}".format(efuses["ADC1_MODE1_D1"].get()))
-        print("    MODE1 D2 reading  (800mV):  {}".format(efuses["ADC1_MODE1_D2"].get()))
-
-        print("    MODE2 D1 reading  (250mV):  {}".format(efuses["ADC1_MODE2_D1"].get()))
-        print("    MODE2 D2 reading  (1000mV): {}".format(efuses["ADC1_MODE2_D2"].get()))
-
-        print("    MODE3 D1 reading  (250mV):  {}".format(efuses["ADC1_MODE3_D1"].get()))
-        print("    MODE3 D2 reading  (2000mV): {}".format(efuses["ADC1_MODE3_D2"].get()))
-
-        print("")
-        print("ADC2 readings stored in efuse BLOCK2:")
-        print("    MODE0 D1 reading  (250mV):  {}".format(efuses["ADC2_MODE0_D1"].get()))
-        print("    MODE0 D2 reading  (600mV):  {}".format(efuses["ADC2_MODE0_D2"].get()))
-
-        print("    MODE1 D1 reading  (250mV):  {}".format(efuses["ADC2_MODE1_D1"].get()))
-        print("    MODE1 D2 reading  (800mV):  {}".format(efuses["ADC2_MODE1_D2"].get()))
-
-        print("    MODE2 D1 reading  (250mV):  {}".format(efuses["ADC2_MODE2_D1"].get()))
-        print("    MODE2 D2 reading  (1000mV): {}".format(efuses["ADC2_MODE2_D2"].get()))
-
-        print("    MODE3 D1 reading  (250mV):  {}".format(efuses["ADC2_MODE3_D1"].get()))
-        print("    MODE3 D2 reading  (2000mV): {}".format(efuses["ADC2_MODE3_D2"].get()))
+        print("ADC1 Calibration data stored in efuse BLOCK2:")
+        print(f"OCODE: {efuses['OCODE'].get()}")
+        print(f"INIT_CODE_ATTEN0: {efuses['ADC1_INIT_CODE_ATTEN0'].get()}")
+        print(f"INIT_CODE_ATTEN1: {efuses['ADC1_INIT_CODE_ATTEN1'].get()}")
+        print(f"INIT_CODE_ATTEN2: {efuses['ADC1_INIT_CODE_ATTEN2'].get()}")
+        print(f"INIT_CODE_ATTEN3: {efuses['ADC1_INIT_CODE_ATTEN3'].get()}")
+        print(f"CAL_VOL_ATTEN0: {efuses['ADC1_CAL_VOL_ATTEN0'].get()}")
+        print(f"CAL_VOL_ATTEN1: {efuses['ADC1_CAL_VOL_ATTEN1'].get()}")
+        print(f"CAL_VOL_ATTEN2: {efuses['ADC1_CAL_VOL_ATTEN2'].get()}")
+        print(f"CAL_VOL_ATTEN3: {efuses['ADC1_CAL_VOL_ATTEN3'].get()}")
+        print(f"INIT_CODE_ATTEN0_CH0: {efuses['ADC1_INIT_CODE_ATTEN0_CH0'].get()}")
+        print(f"INIT_CODE_ATTEN0_CH1: {efuses['ADC1_INIT_CODE_ATTEN0_CH1'].get()}")
+        print(f"INIT_CODE_ATTEN0_CH2: {efuses['ADC1_INIT_CODE_ATTEN0_CH2'].get()}")
+        print(f"INIT_CODE_ATTEN0_CH3: {efuses['ADC1_INIT_CODE_ATTEN0_CH3'].get()}")
+        print(f"INIT_CODE_ATTEN0_CH4: {efuses['ADC1_INIT_CODE_ATTEN0_CH4'].get()}")
+        print(f"INIT_CODE_ATTEN0_CH5: {efuses['ADC1_INIT_CODE_ATTEN0_CH5'].get()}")
+        print(f"INIT_CODE_ATTEN0_CH6: {efuses['ADC1_INIT_CODE_ATTEN0_CH6'].get()}")
     else:
-        print("BLK_VERSION_MAJOR = {}".format(efuses["BLK_VERSION_MAJOR"].get_meaning()))
+        print("BLK_VERSION_MINOR = {}".format(efuses["BLK_VERSION_MINOR"].get_meaning()))
     # fmt: on
 
 
@@ -276,7 +270,13 @@ def burn_key(esp, efuses, args, digest=None):
         if efuses[block.key_purpose_name].need_reverse(keypurpose):
             revers_msg = "\tReversing byte order for AES-XTS hardware peripheral"
             data = data[::-1]
-        print("-> [%s]" % (util.hexify(data, " ")))
+        print(
+            "-> [{}]".format(
+                util.hexify(data, " ")
+                if args.show_sensitive_info
+                else " ".join(["??"] * len(data))
+            )
+        )
         if revers_msg:
             print(revers_msg)
         if len(data) != num_bytes:

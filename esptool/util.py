@@ -3,6 +3,7 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+import os
 import re
 import struct
 import sys
@@ -33,6 +34,8 @@ def flash_size_bytes(size):
     """Given a flash size of the type passed in args.flash_size
     (ie 512KB or 1MB) then return the size in bytes.
     """
+    if size is None:
+        return None
     if "MB" in size:
         return int(size[: size.index("MB")]) * 1024 * 1024
     elif "KB" in size:
@@ -65,7 +68,7 @@ def print_overwrite(message, last_line=False):
     If output is not a TTY (for example redirected a pipe),
     no overwriting happens and this function is the same as print().
     """
-    if sys.stdout.isatty():
+    if hasattr(sys.stdout, "isatty") and sys.stdout.isatty():
         print("\r%s" % message, end="\n" if last_line else "")
     else:
         print(message)
@@ -85,6 +88,15 @@ def expand_chip_name(chip_name):
 def strip_chip_name(chip_name):
     """Strip chip name to normalized form, e.g. `ESP32-S3(beta2)` -> `esp32s3beta2`"""
     return re.sub(r"[-()]", "", chip_name.lower())
+
+
+def get_file_size(path_to_file):
+    """Returns the file size in bytes"""
+    file_size = 0
+    with open(path_to_file, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        file_size = f.tell()
+    return file_size
 
 
 class FatalError(RuntimeError):

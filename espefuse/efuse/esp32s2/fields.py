@@ -54,16 +54,15 @@ class EspEfuses(base_fields.EspEfusesBase):
     Wrapper object to manage the efuse fields in a connected ESP bootloader
     """
 
-    Blocks = EfuseDefineBlocks()
-    Fields = EfuseDefineFields()
-    REGS = EfuseDefineRegisters
-    BURN_BLOCK_DATA_NAMES = Blocks.get_burn_block_data_names()
-    BLOCKS_FOR_KEYS = Blocks.get_blocks_for_keys()
-
     debug = False
     do_not_confirm = False
 
     def __init__(self, esp, skip_connect=False, debug=False, do_not_confirm=False):
+        self.Blocks = EfuseDefineBlocks()
+        self.Fields = EfuseDefineFields()
+        self.REGS = EfuseDefineRegisters
+        self.BURN_BLOCK_DATA_NAMES = self.Blocks.get_burn_block_data_names()
+        self.BLOCKS_FOR_KEYS = self.Blocks.get_blocks_for_keys()
         self._esp = esp
         self.debug = debug
         self.do_not_confirm = do_not_confirm
@@ -85,59 +84,43 @@ class EspEfuses(base_fields.EspEfusesBase):
         ]
         if not skip_connect:
             self.get_coding_scheme_warnings()
-        self.efuses = [
-            EfuseField.from_tuple(
-                self, self.Fields.get(efuse), self.Fields.get(efuse).class_type
-            )
-            for efuse in self.Fields.EFUSES
-        ]
+        self.efuses = [EfuseField.convert(self, efuse) for efuse in self.Fields.EFUSES]
         self.efuses += [
-            EfuseField.from_tuple(
-                self, self.Fields.get(efuse), self.Fields.get(efuse).class_type
-            )
-            for efuse in self.Fields.KEYBLOCKS
+            EfuseField.convert(self, efuse) for efuse in self.Fields.KEYBLOCKS
         ]
         if skip_connect:
             self.efuses += [
-                EfuseField.from_tuple(
-                    self, self.Fields.get(efuse), self.Fields.get(efuse).class_type
-                )
+                EfuseField.convert(self, efuse)
                 for efuse in self.Fields.BLOCK2_CALIBRATION_EFUSES
             ]
         else:
             if self["BLK_VERSION_MINOR"].get() == 1:
                 self.efuses += [
-                    EfuseField.from_tuple(
-                        self, self.Fields.get(efuse), self.Fields.get(efuse).class_type
-                    )
+                    EfuseField.convert(self, efuse)
                     for efuse in self.Fields.BLOCK2_CALIBRATION_EFUSES
                 ]
             self.efuses += [
-                EfuseField.from_tuple(
-                    self, self.Fields.get(efuse), self.Fields.get(efuse).class_type
-                )
-                for efuse in self.Fields.CALC
+                EfuseField.convert(self, efuse) for efuse in self.Fields.CALC
             ]
 
     def __getitem__(self, efuse_name):
         """Return the efuse field with the given name"""
         for e in self.efuses:
-            if efuse_name == e.name:
+            if efuse_name == e.name or any(x == efuse_name for x in e.alt_names):
                 return e
         new_fields = False
         for efuse in self.Fields.BLOCK2_CALIBRATION_EFUSES:
-            e = self.Fields.get(efuse)
-            if e.name == efuse_name:
+            if efuse.name == efuse_name or any(
+                x == efuse_name for x in efuse.alt_names
+            ):
                 self.efuses += [
-                    EfuseField.from_tuple(
-                        self, self.Fields.get(efuse), self.Fields.get(efuse).class_type
-                    )
+                    EfuseField.convert(self, efuse)
                     for efuse in self.Fields.BLOCK2_CALIBRATION_EFUSES
                 ]
                 new_fields = True
         if new_fields:
             for e in self.efuses:
-                if efuse_name == e.name:
+                if efuse_name == e.name or any(x == efuse_name for x in e.alt_names):
                     return e
         raise KeyError
 
@@ -158,10 +141,6 @@ class EspEfuses(base_fields.EspEfusesBase):
             )
         )
 
-    def get_block_errors(self, block_num):
-        """Returns (error count, failure boolean flag)"""
-        return self.blocks[block_num].num_errors, self.blocks[block_num].fail
-
     def efuse_controller_setup(self):
         self.set_efuse_timing()
         self.clear_pgm_registers()
@@ -181,9 +160,13 @@ class EspEfuses(base_fields.EspEfusesBase):
     def wait_efuse_idle(self):
         deadline = time.time() + self.REGS.EFUSE_BURN_TIMEOUT
         while time.time() < deadline:
-            # if self.read_reg(self.EFUSE_CMD_REG) == 0:
-            if self.read_reg(self.REGS.EFUSE_STATUS_REG) & 0x7 == 1:
-                return
+            cmds = self.REGS.EFUSE_PGM_CMD | self.REGS.EFUSE_READ_CMD
+            if self.read_reg(self.REGS.EFUSE_CMD_REG) & cmds == 0:
+                if self.read_reg(self.REGS.EFUSE_CMD_REG) & cmds == 0:
+                    # Due to a hardware error, we have to read READ_CMD again
+                    # to make sure the efuse clock is normal.
+                    # For PGM_CMD it is not necessary.
+                    return
         raise esptool.FatalError(
             "Timed out waiting for Efuse controller command to complete"
         )
@@ -310,12 +293,9 @@ class EspEfuses(base_fields.EspEfusesBase):
                     self.read_reg(self.REGS.EFUSE_RD_REPEAT_ERR0_REG + offs * 4)
                     for offs in range(5)
                 ]
-                data = BitArray()
+                block.err_bitarray.pos = 0
                 for word in reversed(words):
-                    data.append("uint:32=%d" % word)
-                # pos=32 because EFUSE_WR_DIS goes first it is 32bit long
-                # and not under error control
-                block.err_bitarray.overwrite(data, pos=32)
+                    block.err_bitarray.overwrite(BitArray("uint:32=%d" % word))
                 block.num_errors = block.err_bitarray.count(True)
                 block.fail = block.num_errors != 0
             else:
@@ -342,9 +322,10 @@ class EspEfuses(base_fields.EspEfusesBase):
     def summary(self):
         if self["VDD_SPI_FORCE"].get() == 0:
             output = "Flash voltage (VDD_SPI) determined by GPIO45 on reset "
-            "(GPIO45=High: VDD_SPI pin is powered from internal 1.8V LDO\n"
+            output += "(GPIO45=High: VDD_SPI pin is powered from internal 1.8V LDO\n"
             output += "GPIO45=Low or NC: VDD_SPI pin is powered directly from "
-            "VDD3P3_RTC_IO via resistor Rspi. Typically this voltage is 3.3 V)."
+            output += "VDD3P3_RTC_IO via resistor Rspi. "
+            output += "Typically this voltage is 3.3 V)."
         elif self["VDD_SPI_XPD"].get() == 0:
             output = "Flash voltage (VDD_SPI) internal regulator disabled by efuse."
         elif self["VDD_SPI_TIEH"].get() == 0:
@@ -356,35 +337,22 @@ class EspEfuses(base_fields.EspEfusesBase):
 
 class EfuseField(base_fields.EfuseFieldBase):
     @staticmethod
-    def from_tuple(parent, efuse_tuple, type_class):
+    def convert(parent, efuse):
         return {
             "mac": EfuseMacField,
             "keypurpose": EfuseKeyPurposeField,
             "t_sensor": EfuseTempSensor,
             "adc_tp": EfuseAdcPointCalibration,
             "wafer": EfuseWafer,
-        }.get(type_class, EfuseField)(parent, efuse_tuple)
-
-    def get_info(self):
-        output = "%s (BLOCK%d)" % (self.name, self.block)
-        errs, fail = self.parent.get_block_errors(self.block)
-        if errs != 0 or fail:
-            output += (
-                "[FAIL:%d]" % (fail)
-                if self.block == 0
-                else "[ERRS:%d FAIL:%d]" % (errs, fail)
-            )
-        if self.efuse_class == "keyblock":
-            name = self.parent.blocks[self.block].key_purpose_name
-            if name is not None:
-                output += "\n  Purpose: %s\n " % (self.parent[name].get())
-        return output
+        }.get(efuse.class_type, EfuseField)(parent, efuse)
 
 
 class EfuseWafer(EfuseField):
     def get(self, from_read=True):
         hi_bits = self.parent["WAFER_VERSION_MINOR_HI"].get(from_read)
+        assert self.parent["WAFER_VERSION_MINOR_HI"].bit_len == 1
         lo_bits = self.parent["WAFER_VERSION_MINOR_LO"].get(from_read)
+        assert self.parent["WAFER_VERSION_MINOR_LO"].bit_len == 3
         return (hi_bits << 3) + lo_bits
 
     def save(self, new_value):

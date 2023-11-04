@@ -17,6 +17,7 @@ from .. import util
 from ..base_operations import (
     add_common_commands,
     add_force_write_always,
+    add_show_sensitive_info_option,
     burn_bit,
     burn_block_data,
     burn_efuse,
@@ -55,6 +56,7 @@ def add_commands(subparsers, efuses):
     )
     protect_options(burn_key)
     add_force_write_always(burn_key)
+    add_show_sensitive_info_option(burn_key)
     burn_key.add_argument(
         "block",
         help="Key block to burn",
@@ -63,7 +65,7 @@ def add_commands(subparsers, efuses):
     )
     burn_key.add_argument(
         "keyfile",
-        help="File containing 256 bits of binary key data",
+        help="File containing 256 bits of binary key data. For the ECDSA_KEY purpose use PEM file.",
         action="append",
         type=argparse.FileType("rb"),
     )
@@ -84,7 +86,7 @@ def add_commands(subparsers, efuses):
         )
         burn_key.add_argument(
             "keyfile",
-            help="File containing 256 bits of binary key data",
+            help="File containing 256 bits of binary key data. For the ECDSA_KEY purpose use PEM file.",
             nargs="?",
             action="append",
             metavar="KEYFILE",
@@ -105,6 +107,7 @@ def add_commands(subparsers, efuses):
     )
     protect_options(burn_key_digest)
     add_force_write_always(burn_key_digest)
+    add_show_sensitive_info_option(burn_key_digest)
     burn_key_digest.add_argument(
         "block",
         help="Key block to burn",
@@ -152,9 +155,8 @@ def add_commands(subparsers, efuses):
     p = subparsers.add_parser(
         "set_flash_voltage",
         help="Permanently set the internal flash voltage regulator "
-        "to either 1.8V, 3.3V or OFF. "
-        "This means GPIO45 can be high or low at reset without "
-        "changing the flash voltage.",
+        "to either 1.8V, 3.3V or OFF. This means GPIO45 can be high or low "
+        "at reset without changing the flash voltage.",
     )
     p.add_argument("voltage", help="Voltage selection", choices=["1.8V", "3.3V", "OFF"])
 
@@ -191,38 +193,28 @@ def set_flash_voltage(esp, efuses, args):
 def adc_info(esp, efuses, args):
     print("")
     # fmt: off
-    if efuses["BLK_VERSION_MAJOR"].get() == 1:
-        print("Temperature Sensor Calibration = {}C".format(efuses["TEMP_SENSOR_CAL"].get()))
+    if efuses["BLK_VERSION_MINOR"].get() == 2:
+        print("Temperature Sensor Calibration = {}C".format(efuses["TEMP_CALIB"].get()))
 
         print("")
         print("ADC1 readings stored in efuse BLOCK2:")
-        print("    MODE0 D1 reading  (250mV):  {}".format(efuses["ADC1_MODE0_D1"].get()))
-        print("    MODE0 D2 reading  (600mV):  {}".format(efuses["ADC1_MODE0_D2"].get()))
+        print("    AVE_INITCODE_ATTEN0:  {}".format(efuses["ADC1_AVE_INITCODE_ATTEN0"].get()))
+        print("    AVE_INITCODE_ATTEN1:  {}".format(efuses["ADC1_AVE_INITCODE_ATTEN1"].get()))
+        print("    AVE_INITCODE_ATTEN2:  {}".format(efuses["ADC1_AVE_INITCODE_ATTEN2"].get()))
+        print("    AVE_INITCODE_ATTEN3:  {}".format(efuses["ADC1_AVE_INITCODE_ATTEN3"].get()))
 
-        print("    MODE1 D1 reading  (250mV):  {}".format(efuses["ADC1_MODE1_D1"].get()))
-        print("    MODE1 D2 reading  (800mV):  {}".format(efuses["ADC1_MODE1_D2"].get()))
+        print("    HI_DOUT_ATTEN0:  {}".format(efuses["ADC1_HI_DOUT_ATTEN0"].get()))
+        print("    HI_DOUT_ATTEN1:  {}".format(efuses["ADC1_HI_DOUT_ATTEN1"].get()))
+        print("    HI_DOUT_ATTEN2:  {}".format(efuses["ADC1_HI_DOUT_ATTEN2"].get()))
+        print("    HI_DOUT_ATTEN3:  {}".format(efuses["ADC1_HI_DOUT_ATTEN3"].get()))
 
-        print("    MODE2 D1 reading  (250mV):  {}".format(efuses["ADC1_MODE2_D1"].get()))
-        print("    MODE2 D2 reading  (1000mV): {}".format(efuses["ADC1_MODE2_D2"].get()))
-
-        print("    MODE3 D1 reading  (250mV):  {}".format(efuses["ADC1_MODE3_D1"].get()))
-        print("    MODE3 D2 reading  (2000mV): {}".format(efuses["ADC1_MODE3_D2"].get()))
-
-        print("")
-        print("ADC2 readings stored in efuse BLOCK2:")
-        print("    MODE0 D1 reading  (250mV):  {}".format(efuses["ADC2_MODE0_D1"].get()))
-        print("    MODE0 D2 reading  (600mV):  {}".format(efuses["ADC2_MODE0_D2"].get()))
-
-        print("    MODE1 D1 reading  (250mV):  {}".format(efuses["ADC2_MODE1_D1"].get()))
-        print("    MODE1 D2 reading  (800mV):  {}".format(efuses["ADC2_MODE1_D2"].get()))
-
-        print("    MODE2 D1 reading  (250mV):  {}".format(efuses["ADC2_MODE2_D1"].get()))
-        print("    MODE2 D2 reading  (1000mV): {}".format(efuses["ADC2_MODE2_D2"].get()))
-
-        print("    MODE3 D1 reading  (250mV):  {}".format(efuses["ADC2_MODE3_D1"].get()))
-        print("    MODE3 D2 reading  (2000mV): {}".format(efuses["ADC2_MODE3_D2"].get()))
+        print("    CH0_ATTEN0_INITCODE_DIFF:  {}".format(efuses["ADC1_CH0_ATTEN0_INITCODE_DIFF"].get()))
+        print("    CH1_ATTEN0_INITCODE_DIFF:  {}".format(efuses["ADC1_CH1_ATTEN0_INITCODE_DIFF"].get()))
+        print("    CH2_ATTEN0_INITCODE_DIFF:  {}".format(efuses["ADC1_CH2_ATTEN0_INITCODE_DIFF"].get()))
+        print("    CH3_ATTEN0_INITCODE_DIFF:  {}".format(efuses["ADC1_CH3_ATTEN0_INITCODE_DIFF"].get()))
+        print("    CH4_ATTEN0_INITCODE_DIFF:  {}".format(efuses["ADC1_CH4_ATTEN0_INITCODE_DIFF"].get()))
     else:
-        print("BLK_VERSION_MAJOR = {}".format(efuses["BLK_VERSION_MAJOR"].get_meaning()))
+        print("BLK_VERSION_MINOR = {}".format(efuses["BLK_VERSION_MINOR"].get()))
     # fmt: on
 
 
@@ -267,16 +259,29 @@ def burn_key(esp, efuses, args, digest=None):
         block = efuses.blocks[block_num]
 
         if digest is None:
-            data = datafile.read()
+            if keypurpose == "ECDSA_KEY":
+                sk = espsecure.load_ecdsa_signing_key(datafile)
+                data = sk.to_string()
+                if len(data) == 24:
+                    # the private key is 24 bytes long for NIST192p, add 8 bytes of padding
+                    data = b"\x00" * 8 + data
+            else:
+                data = datafile.read()
         else:
             data = datafile
 
         print(" - %s" % (efuse.name), end=" ")
         revers_msg = None
         if efuses[block.key_purpose_name].need_reverse(keypurpose):
-            revers_msg = "\tReversing byte order for AES-XTS hardware peripheral"
+            revers_msg = f"\tReversing byte order for {keypurpose} hardware peripheral"
             data = data[::-1]
-        print("-> [%s]" % (util.hexify(data, " ")))
+        print(
+            "-> [{}]".format(
+                util.hexify(data, " ")
+                if args.show_sensitive_info
+                else " ".join(["??"] * len(data))
+            )
+        )
         if revers_msg:
             print(revers_msg)
         if len(data) != num_bytes:

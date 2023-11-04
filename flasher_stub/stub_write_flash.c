@@ -96,15 +96,7 @@ static void spi_write_enable(void)
 }
 
 #if ESP32_OR_LATER
-#if ESP32C3 || ESP32C6BETA || ESP32C2 || ESP32C6
-static esp_rom_spiflash_chip_t *flashchip = (esp_rom_spiflash_chip_t *)0x3fcdfff4;
-#elif ESP32H2BETA1 || ESP32H2BETA2
-static esp_rom_spiflash_chip_t *flashchip = (esp_rom_spiflash_chip_t *)0x3fcdfff0;
-#elif ESP32H2
-static esp_rom_spiflash_chip_t *flashchip = (esp_rom_spiflash_chip_t *)0x4084fff0;
-#else
-static esp_rom_spiflash_chip_t *flashchip = (esp_rom_spiflash_chip_t *)0x3ffae270;
-#endif
+static esp_rom_spiflash_chip_t *flashchip = (esp_rom_spiflash_chip_t *)ROM_SPIFLASH_LEGACY;
 
 /* Stub version of SPIUnlock() that replaces version in ROM.
 
@@ -126,7 +118,7 @@ SpiFlashOpResult SPIUnlock(void)
   if (SPI_read_status_high(&status) != SPI_FLASH_RESULT_OK) {
     return SPI_FLASH_RESULT_ERR;
   }
-#endif
+#endif // ESP32S2_OR_LATER
 
   /* Clear all bits except QIE, if it is set.
      (This is different from ROM SPIUnlock, which keeps all bits as-is.)
@@ -142,7 +134,7 @@ SpiFlashOpResult SPIUnlock(void)
 
   return SPI_FLASH_RESULT_OK;
 }
-#endif
+#endif // ESP32_OR_LATER
 
 #if defined(ESP32S3) && !defined(ESP32S3BETA2)
 static esp_rom_spiflash_result_t page_program_internal(int spi_num, uint32_t spi_addr, uint8_t* addr_source, uint32_t byte_length)
@@ -203,7 +195,7 @@ static esp_rom_spiflash_result_t SPIWrite4B(int spi_num, uint32_t target, uint8_
     esp_rom_opiflash_wait_idle();
     return  ESP_ROM_SPIFLASH_RESULT_OK;
 }
-#endif // ESP32S3
+#endif // defined(ESP32S3) && !defined(ESP32S3BETA2)
 
 esp_command_error handle_flash_begin(uint32_t total_size, uint32_t offset) {
   fs.in_flash_mode = true;
@@ -214,7 +206,7 @@ esp_command_error handle_flash_begin(uint32_t total_size, uint32_t offset) {
   fs.last_error = ESP_OK;
 
 #if defined(ESP32S3) && !defined(ESP32S3BETA2)
-  if (ets_efuse_flash_octal_mode()) {
+  if (large_flash_mode) {
     esp_rom_opiflash_wait_idle();
   } else {
     if (SPIUnlock() != 0) {
@@ -266,14 +258,14 @@ static void start_next_erase(void)
   spi_write_enable();
   spi_wait_ready();
   #if defined(ESP32S3) && !defined(ESP32S3BETA2)
-      if (ets_efuse_flash_octal_mode()) {
+      if (large_flash_mode) {
         if (block_erase) {
           if (fs.next_erase_sector * FLASH_SECTOR_SIZE < (1 << 24)) {
             esp_rom_opiflash_wait_idle();
             esp_rom_opiflash_wren();
 
             esp_rom_opiflash_exec_cmd(1, SPI_FLASH_SLOWRD_MODE,
-                                CMD_LARGE_BLOCK_ERASE, 8, 
+                                CMD_LARGE_BLOCK_ERASE, 8,
                                 fs.next_erase_sector * FLASH_SECTOR_SIZE, 24,
                                 0,
                                 NULL, 0,
@@ -291,7 +283,7 @@ static void start_next_erase(void)
             esp_rom_opiflash_wren();
 
             esp_rom_opiflash_exec_cmd(1, SPI_FLASH_SLOWRD_MODE,
-                                CMD_SECTOR_ERASE, 8, 
+                                CMD_SECTOR_ERASE, 8,
                                 fs.next_erase_sector * FLASH_SECTOR_SIZE, 24,
                                 0,
                                 NULL, 0,
@@ -354,14 +346,14 @@ void handle_flash_data(void *data_buf, uint32_t length) {
 
   /* do the actual write */
   #if defined(ESP32S3) && !defined(ESP32S3BETA2)
-      if (ets_efuse_flash_octal_mode()) {
+      if (large_flash_mode){
         res = SPIWrite4B(1, fs.next_write, data_buf, length);
       } else {
         res = SPIWrite(fs.next_write, data_buf, length);
       }
   #else
     res = SPIWrite(fs.next_write, data_buf, length);
-  #endif // ESP32S3
+  #endif // defined(ESP32S3) && !defined(ESP32S3BETA2)
   if (res != 0)
     fs.last_error = ESP_FAILED_SPI_OP;
   fs.next_write += length;
@@ -423,6 +415,13 @@ void handle_flash_encrypt_data(void *data_buf, uint32_t length) {
 #endif // !ESP8266
 
 void handle_flash_deflated_data(void *data_buf, uint32_t length) {
+  /* if all data has been uploaded and another block comes,
+     accept it only if it is part of a 4-byte Adler-32 checksum */
+  if (fs.remaining == 0 && length > 4) {
+    fs.last_error = ESP_TOO_MUCH_DATA;
+    return;
+  }
+
   static uint8_t out_buf[32768];
   static uint8_t *next_out = out_buf;
   int status = TINFL_STATUS_NEEDS_MORE_INPUT;
@@ -463,9 +462,6 @@ void handle_flash_deflated_data(void *data_buf, uint32_t length) {
 
   if (status == TINFL_STATUS_DONE && fs.remaining > 0) {
     fs.last_error = ESP_NOT_ENOUGH_DATA;
-  }
-  if (status != TINFL_STATUS_DONE && fs.remaining == 0) {
-    fs.last_error = ESP_TOO_MUCH_DATA;
   }
 }
 

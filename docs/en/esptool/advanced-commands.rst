@@ -1,4 +1,4 @@
-{IDF_TARGET_BOOTLOADER_OFFSET:default="0x0", esp8266="0x0", esp32="0x1000", esp32s2="0x1000", esp32s3="0x0", esp32c3="0x0"}
+{IDF_TARGET_BOOTLOADER_OFFSET:default="0x0", esp32="0x1000", esp32s2="0x1000"}
 
 .. _advanced-commands:
 
@@ -48,7 +48,7 @@ The ``dump_mem`` command will dump a region from the chip's memory space to a fi
 Load a Binary to RAM: load_ram
 ------------------------------
 
-The ``load_ram`` command allows the loading of an executable binary image (created with the ``elf2image`` or ``make_image`` commands) directly into RAM, and then immediately executes the program contained within it.
+The ``load_ram`` command allows the loading of an executable binary image (created with the ``elf2image`` or ``make_image`` commands) directly into RAM, and then immediately executes the program contained within it. Command also supports ``.hex`` file created by ``merge_bin`` command from supported ``.bin`` files.
 
 ::
 

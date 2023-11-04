@@ -1,7 +1,7 @@
 # Makefile to compile the flasher stub program
 #
 # Note that YOU DO NOT NEED TO COMPILE THIS IN ORDER TO JUST USE
-# esptool.py - a precompiled version is embedded in esptool.py,
+# esptool.py - a precompiled version is included in esptool.py,
 # so if you don't want to modify the stub code then you are good to go.
 #
 # See the comments in the top of the Makefile for parameters that
@@ -38,6 +38,10 @@ CROSS_32S2 ?= xtensa-esp32s2-elf-
 CROSS_32S3 ?= xtensa-esp32s3-elf-
 CROSS_ESPRISCV32 ?= riscv32-esp-elf-
 
+# extra CFLAGS to be passed on the compiler, in addition to the stock ones
+EXTRA_CFLAGS ?=
+EXTRA_CFLAGS_ESPRISCV32 ?=
+
 # Python command to invoke wrap_stub.py
 WRAP_STUB ?= ./wrap_stub.py
 
@@ -65,27 +69,60 @@ STUB_ELF_32H2_BETA_2 = $(BUILD_DIR)/$(STUB)_32h2beta2.elf
 STUB_ELF_32C2 = $(BUILD_DIR)/$(STUB)_32c2.elf
 STUB_ELF_32C6 = $(BUILD_DIR)/$(STUB)_32c6.elf
 STUB_ELF_32H2 = $(BUILD_DIR)/$(STUB)_32h2.elf
+STUB_ELF_32P4 = $(BUILD_DIR)/$(STUB)_32p4.elf
 
-.PHONY: all esp32 clean embed embed_esp32
+STUBS_ELF =
+ifneq ($(WITHOUT_ESP8266),1)
+STUBS_ELF += \
+  $(STUB_ELF_8266)
+endif
 
-all: $(STUB_ELF_8266) $(STUB_ELF_32) $(STUB_ELF_32S2) $(STUB_ELF_32S3_BETA_2) $(STUB_ELF_32S3) $(STUB_ELF_32C3) $(STUB_ELF_32C6BETA) $(STUB_ELF_32H2_BETA_1) $(STUB_ELF_32H2_BETA_2) $(STUB_ELF_32C2) $(STUB_ELF_32C6) $(STUB_ELF_32H2)
-	@echo "  WRAP $^ -> $(BUILD_DIR)"
-	$(Q) $(WRAP_STUB) $^
+ifneq ($(WITHOUT_ESP32_XTENSA),1)
+STUBS_ELF += \
+  $(STUB_ELF_32) \
+  $(STUB_ELF_32S2) \
+  $(STUB_ELF_32S3_BETA_2) \
+  $(STUB_ELF_32S3)
+endif
 
-esp32: $(STUB_ELF_32) $(STUB_ELF_32S2) $(STUB_ELF_32S3_BETA_2) $(STUB_ELF_32S3) $(STUB_ELF_32C3) $(STUB_ELF_32C6BETA) $(STUB_ELF_32H2_BETA_1) $(STUB_ELF_32H2_BETA_2) $(STUB_ELF_32C2) $(STUB_ELF_32C6) $(STUB_ELF_32H2)
-	@echo "  WRAP $^ -> $(BUILD_DIR)"
-	$(Q) $(WRAP_STUB) $^
+ifneq ($(WITHOUT_ESP32_RISCV32),1)
+STUBS_ELF += \
+  $(STUB_ELF_32C3) \
+  $(STUB_ELF_32C6BETA) \
+  $(STUB_ELF_32H2_BETA_1) \
+  $(STUB_ELF_32H2_BETA_2) \
+  $(STUB_ELF_32C2) \
+  $(STUB_ELF_32C6) \
+  $(STUB_ELF_32H2) \
+  $(STUB_ELF_32P4)
+endif
+
+.PHONY: all clean install
+
+all: $(STUBS_ELF:.elf=.json)
+
+install: $(patsubst $(BUILD_DIR)/%.elf,$(ESPTOOL_STUBS_DIR)/%.json,$(STUBS_ELF))
 
 $(BUILD_DIR):
 	$(Q) mkdir $@
 
+$(BUILD_DIR)/%.json: $(BUILD_DIR)/%.elf
+	@echo "  WRAP $^ -> $(BUILD_DIR)"
+	$(Q) $(WRAP_STUB) $^
+
+$(ESPTOOL_STUBS_DIR)/%.json: $(BUILD_DIR)/%.json
+	@echo "  INSTALL $^ -> $@"
+	$(Q) cp $^ $@
+
 CFLAGS = -std=c99 -Wall -Werror -Os \
          -mtext-section-literals -mlongcalls -nostdlib -fno-builtin -flto \
-         -Wl,-static -g -ffunction-sections -Wl,--gc-sections -Iinclude -Lld
+         -Wl,-static -g -ffunction-sections -Wl,--gc-sections -Iinclude -Lld \
+         $(EXTRA_CFLAGS)
 CFLAGS_ESPRISCV32 = -std=c99 -Wall -Werror -Os \
-		 -march=rv32imc -msmall-data-limit=0 \
+		 -march=rv32imc -mabi=ilp32 -msmall-data-limit=0 \
          -nostdlib -fno-builtin -flto \
-         -Wl,-static -g -ffunction-sections -Wl,--gc-sections -Iinclude -Lld
+         -Wl,-static -g -ffunction-sections -Wl,--gc-sections -Iinclude -Lld \
+         $(EXTRA_CFLAGS_ESPRISCV32)
 LDLIBS = -lgcc
 
 $(STUB_ELF_8266): $(SRCS) $(SRCS_8266) $(BUILD_DIR) ld/stub_8266.ld | Makefile
@@ -136,13 +173,9 @@ $(STUB_ELF_32H2): $(SRCS) $(BUILD_DIR) ld/stub_32h2.ld
 	@echo "  CC(32H2)   $^ -> $@"
 	$(Q) $(CROSS_ESPRISCV32)gcc $(CFLAGS_ESPRISCV32) -DESP32H2=1 -Tstub_32h2.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
 
-embed: $(STUB_ELF_8266) $(STUB_ELF_32) $(STUB_ELF_32S2) $(STUB_ELF_32S3_BETA_2) $(STUB_ELF_32S3) $(STUB_ELF_32C3) $(STUB_ELF_32C6BETA) $(STUB_ELF_32H2_BETA_1) $(STUB_ELF_32H2_BETA_2) $(STUB_ELF_32C2) $(STUB_ELF_32C6) $(STUB_ELF_32H2)
-	@echo "  WRAP $^ -> $(ESPTOOL_STUBS_DIR)"
-	$(Q) $(WRAP_STUB) --embed $^
-
-embed_esp32: $(STUB_ELF_32) $(STUB_ELF_32S2) $(STUB_ELF_32S3_BETA_2) $(STUB_ELF_32S3) $(STUB_ELF_32C3) $(STUB_ELF_32C6BETA) $(STUB_ELF_32H2_BETA_1) $(STUB_ELF_32H2_BETA_2) $(STUB_ELF_32C2) $(STUB_ELF_32C6) $(STUB_ELF_32H2)
-	@echo "  WRAP $^ -> $(ESPTOOL_STUBS_DIR)"
-	$(Q) $(WRAP_STUB) --embed $^
+$(STUB_ELF_32P4): $(SRCS) $(BUILD_DIR) ld/stub_32p4.ld
+	@echo "  CC(32P4)   $^ -> $@"
+	$(Q) $(CROSS_ESPRISCV32)gcc $(CFLAGS_ESPRISCV32) -DESP32P4=1 -Tstub_32p4.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
 
 clean:
 	$(Q) rm -rf $(BUILD_DIR)

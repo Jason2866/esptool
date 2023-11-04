@@ -71,7 +71,8 @@ def add_common_commands(subparsers, efuses):
         metavar="[EFUSE_NAME VALUE] [{} VALUE".format(
             " VALUE] [".join([e.name for e in efuses.efuses])
         ),
-        efuse_choices=[e.name for e in efuses.efuses],
+        efuse_choices=[e.name for e in efuses.efuses]
+        + [name for e in efuses.efuses for name in e.alt_names if name != ""],
         efuses=efuses,
     )
 
@@ -83,7 +84,14 @@ def add_common_commands(subparsers, efuses):
         "efuse_name",
         help="Name of efuse register to burn",
         nargs="+",
-        choices=[e.name for e in efuses.efuses if e.read_disable_bit is not None],
+        choices=[e.name for e in efuses.efuses if e.read_disable_bit is not None]
+        + [
+            name
+            for e in efuses.efuses
+            if e.read_disable_bit is not None
+            for name in e.alt_names
+            if name != ""
+        ],
     )
 
     write_protect_efuse = subparsers.add_parser(
@@ -94,7 +102,14 @@ def add_common_commands(subparsers, efuses):
         "efuse_name",
         help="Name of efuse register to burn",
         nargs="+",
-        choices=[e.name for e in efuses.efuses if e.write_disable_bit is not None],
+        choices=[e.name for e in efuses.efuses if e.write_disable_bit is not None]
+        + [
+            name
+            for e in efuses.efuses
+            if e.write_disable_bit is not None
+            for name in e.alt_names
+            if name != ""
+        ],
     )
 
     burn_block_data = subparsers.add_parser(
@@ -220,6 +235,16 @@ def add_force_write_always(p):
     )
 
 
+def add_show_sensitive_info_option(p):
+    p.add_argument(
+        "--show-sensitive-info",
+        help="Show data to be burned (may expose sensitive data). "
+        "Enabled if --debug is used.",
+        action="store_true",
+        default=False,
+    )
+
+
 def summary(esp, efuses, args):
     """Print a human-readable summary of efuse contents"""
     ROW_FORMAT = "%-50s %-50s%s = %s %s %s"
@@ -261,7 +286,17 @@ def summary(esp, efuses, args):
             base_value = e.get_meaning()
             value = str(base_value)
             if not readable:
-                value = value.replace("0", "?")
+                count_read_disable_bits = e.get_count_read_disable_bits()
+                if count_read_disable_bits == 2:
+                    # On the C2 chip, BLOCK_KEY0 has two read protection bits [0, 1]
+                    # related to the lower and higher part of the block.
+                    v = [value[: (len(value) // 2)], value[(len(value) // 2) :]]
+                    for i in range(count_read_disable_bits):
+                        if not e.is_readable(blk_part=i):
+                            v[i] = v[i].replace("0", "?")
+                    value = "".join(v)
+                else:
+                    value = value.replace("0", "?")
             if human_output:
                 print(
                     ROW_FORMAT
@@ -648,26 +683,49 @@ def burn_bit(esp, efuses, args):
     print("Successful")
 
 
-def check_error(esp, efuses, args):
+def get_error_summary(efuses):
     error_in_blocks = efuses.get_coding_scheme_warnings()
-    if args.recovery:
-        if error_in_blocks:
-            confirmed = False
-            for block in reversed(efuses.blocks):
-                if block.fail or block.num_errors > 0:
-                    if not block.get_bitstring().all(False):
-                        block.save(block.get_bitstring().bytes[::-1])
-                        if not confirmed:
-                            confirmed = True
-                            efuses.confirm(
-                                "Recovery of block coding errors", args.do_not_confirm
-                            )
-                        block.burn()
-            # Reset the recovery flag to run check_error() without it,
-            # just to check the new state of eFuse blocks.
-            args.recovery = False
-            check_error(esp, efuses, args)
-    else:
-        if error_in_blocks:
-            raise esptool.FatalError("Error(s) were detected in eFuses")
+    if not error_in_blocks:
+        return False
+    writable = True
+    for blk in efuses.blocks:
+        if blk.fail or blk.num_errors:
+            if blk.id == 0:
+                for field in efuses:
+                    if field.block == blk.id and (field.fail or field.num_errors):
+                        wr = "writable" if field.is_writeable() else "not writable"
+                        writable &= wr == "writable"
+                        name = field.name
+                        val = field.get()
+                        print(f"BLOCK{field.block:<2}: {name:<40} = {val:<8} ({wr})")
+            else:
+                wr = "writable" if blk.is_writeable() else "not writable"
+                writable &= wr == "writable"
+                name = f"{blk.name} [ERRORS:{blk.num_errors} FAIL:{int(blk.fail)}]"
+                val = str(blk.get_bitstring())
+                print(f"BLOCK{blk.id:<2}: {name:<40} = {val:<8} ({wr})")
+    if not writable and error_in_blocks:
+        print("Not all errors can be fixed because some fields are write-protected!")
+    return True
+
+
+def check_error(esp, efuses, args):
+    error_in_blocks = get_error_summary(efuses)
+    if args.recovery and error_in_blocks:
+        confirmed = False
+        for block in reversed(efuses.blocks):
+            if block.fail or block.num_errors > 0:
+                if not block.get_bitstring().all(False):
+                    block.save(block.get_bitstring().bytes[::-1])
+                    if not confirmed:
+                        confirmed = True
+                        efuses.confirm(
+                            "Recovery of block coding errors", args.do_not_confirm
+                        )
+                    block.burn()
+        if confirmed:
+            efuses.update_efuses()
+        error_in_blocks = get_error_summary(efuses)
+    if error_in_blocks:
+        raise esptool.FatalError("Error(s) were detected in eFuses")
     print("No errors detected")

@@ -5,7 +5,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 import binascii
-import re
 import sys
 
 from bitstring import BitArray, BitStream, CreationError
@@ -85,21 +84,34 @@ class CheckArgValue(object):
 class EfuseProtectBase(object):
     # This class is used by EfuseBlockBase and EfuseFieldBase
 
-    def get_read_disable_mask(self):
+    def get_read_disable_mask(self, blk_part=None):
+        """Returns mask of read protection bits
+        blk_part:
+            - None: Calculate mask for all read protection bits.
+            - a number: Calculate mask only for specific item in read protection list.
+        """
         mask = 0
         if isinstance(self.read_disable_bit, list):
-            for i in self.read_disable_bit:
-                mask |= 1 << i
+            if blk_part is None:
+                for i in self.read_disable_bit:
+                    mask |= 1 << i
+            else:
+                mask |= 1 << self.read_disable_bit[blk_part]
         else:
             mask = 1 << self.read_disable_bit
         return mask
 
-    def is_readable(self):
+    def get_count_read_disable_bits(self):
+        """Returns the number of read protection bits used by the field"""
+        # On the C2 chip, BLOCK_KEY0 has two read protection bits [0, 1].
+        return bin(self.get_read_disable_mask()).count("1")
+
+    def is_readable(self, blk_part=None):
         """Return true if the efuse is readable by software"""
         num_bit = self.read_disable_bit
         if num_bit is None:
             return True  # read cannot be disabled
-        return (self.parent["RD_DIS"].get() & (self.get_read_disable_mask())) == 0
+        return (self.parent["RD_DIS"].get() & self.get_read_disable_mask(blk_part)) == 0
 
     def disable_read(self):
         num_bit = self.read_disable_bit
@@ -538,6 +550,10 @@ class EspEfusesBase(object):
         else:
             raise esptool.FatalError(error_msg)
 
+    def get_block_errors(self, block_num):
+        """Returns (error count, failure boolean flag)"""
+        return self.blocks[block_num].num_errors, self.blocks[block_num].fail
+
 
 class EfuseFieldBase(EfuseProtectBase):
     def __init__(self, parent, param):
@@ -553,18 +569,16 @@ class EfuseFieldBase(EfuseProtectBase):
         self.efuse_type = param.type
         self.description = param.description
         self.dict_value = param.dictionary
+        self.bit_len = param.bit_len
+        self.alt_names = param.alt_names
         self.fail = False
         self.num_errors = 0
-        if self.efuse_type.startswith("bool"):
-            field_len = 1
-        else:
-            field_len = int(re.search(r"\d+", self.efuse_type).group())
-            if self.efuse_type.startswith("bytes"):
-                field_len *= 8
-        self.bitarray = BitStream(field_len)
-        self.bit_len = field_len
+        self.bitarray = BitStream(self.bit_len)
         self.bitarray.set(0)
         self.update(self.parent.blocks[self.block].bitarray)
+
+    def is_field_calculated(self):
+        return self.word is None or self.pos is None
 
     def check_format(self, new_value_str):
         if new_value_str is None:
@@ -658,8 +672,10 @@ class EfuseFieldBase(EfuseProtectBase):
         self.save_to_block(bitarray_field)
 
     def update(self, bit_array_block):
-        if self.word is None or self.pos is None:
-            self.bitarray.overwrite(self.convert_to_bitstring(self.get()), pos=0)
+        if self.is_field_calculated():
+            self.bitarray.overwrite(
+                self.convert_to_bitstring(self.check_format(self.get())), pos=0
+            )
             return
         field_len = self.bitarray.len
         bit_array_block.pos = bit_array_block.length - (
@@ -721,3 +737,18 @@ class EfuseFieldBase(EfuseProtectBase):
         # Burn a efuse. Added for compatibility reason.
         self.save(new_value)
         self.parent.burn_all()
+
+    def get_info(self):
+        output = f"{self.name} (BLOCK{self.block})"
+        if self.block == 0:
+            if self.fail:
+                output += "[error]"
+        else:
+            errs, fail = self.parent.get_block_errors(self.block)
+            if errs != 0 or fail:
+                output += "[error]"
+        if self.efuse_class == "keyblock":
+            name = self.parent.blocks[self.block].key_purpose_name
+            if name is not None:
+                output += f"\n  Purpose: {self.parent[name].get()}\n "
+        return output

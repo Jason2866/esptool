@@ -38,7 +38,7 @@ def find_version(*file_paths):
 
 
 if os.name != "nt":
-    scripts = ["esptool.py", "espefuse.py", "espsecure.py"]
+    scripts = ["esptool.py", "espefuse.py", "espsecure.py", "esp_rfc2217_server.py"]
     entry_points = {}
 else:
     scripts = []
@@ -47,6 +47,7 @@ else:
             "esptool.py=esptool.__init__:_main",
             "espsecure.py=espsecure.__init__:_main",
             "espefuse.py=espefuse.__init__:_main",
+            "esp_rfc2217_server.py=esp_rfc2217_server:main",
         ],
     }
 
@@ -100,6 +101,8 @@ setup(
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
     ],
     python_requires=">=3.7",
     setup_requires=(["wheel"] if "bdist_wheel" in sys.argv else []),
@@ -114,6 +117,7 @@ setup(
             "pre-commit",
             "pytest",
             "pytest-rerunfailures",
+            "requests",
         ],
         "hsm": [
             "python-pkcs11",
@@ -124,7 +128,9 @@ setup(
         "cryptography>=2.1.4",
         "ecdsa>=0.16.0",
         "pyserial>=3.0",
-        "reedsolo>=1.5.3,<=1.6.0",
+        "reedsolo>=1.5.3,<1.8",
+        "PyYAML>=5.1",
+        "intelhex",
     ],
     packages=find_packages(),
     include_package_data=True,

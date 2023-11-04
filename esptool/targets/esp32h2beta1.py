@@ -76,19 +76,16 @@ class ESP32H2BETA1ROM(ESP32C3ROM):
     }
 
     def get_pkg_version(self):
-        num_word = 3
-        return (self.read_reg(self.EFUSE_BLOCK1_ADDR + (4 * num_word)) >> 21) & 0x0F
+        num_word = 4
+        return (self.read_reg(self.EFUSE_BLOCK1_ADDR + (4 * num_word)) >> 0) & 0x07
 
     def get_minor_chip_version(self):
-        hi_num_word = 5
-        hi = (self.read_reg(self.EFUSE_BLOCK1_ADDR + (4 * hi_num_word)) >> 23) & 0x01
-        low_num_word = 3
-        low = (self.read_reg(self.EFUSE_BLOCK1_ADDR + (4 * low_num_word)) >> 18) & 0x07
-        return (hi << 3) + low
+        num_word = 3
+        return (self.read_reg(self.EFUSE_BLOCK1_ADDR + (4 * num_word)) >> 18) & 0x07
 
     def get_major_chip_version(self):
-        num_word = 5
-        return (self.read_reg(self.EFUSE_BLOCK1_ADDR + (4 * num_word)) >> 24) & 0x03
+        num_word = 3
+        return (self.read_reg(self.EFUSE_BLOCK1_ADDR + (4 * num_word)) >> 21) & 0x03
 
     def get_chip_description(self):
         chip_name = {
@@ -109,7 +106,10 @@ class ESP32H2BETA1ROM(ESP32C3ROM):
             "VDD_SDIO overrides are not supported for ESP32-H2"
         )
 
-    def read_mac(self):
+    def read_mac(self, mac_type="BASE_MAC"):
+        """Read MAC from EFUSE region"""
+        if mac_type != "BASE_MAC":
+            return None
         mac0 = self.read_reg(self.MAC_EFUSE_REG)
         mac1 = self.read_reg(self.MAC_EFUSE_REG + 4)  # only bottom 16 bits are MAC
         bitstring = struct.pack(">II", mac1, mac0)[2:]

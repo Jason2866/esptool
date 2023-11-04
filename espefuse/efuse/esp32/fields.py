@@ -65,16 +65,15 @@ class EspEfuses(base_fields.EspEfusesBase):
     Wrapper object to manage the efuse fields in a connected ESP bootloader
     """
 
-    Blocks = EfuseDefineBlocks()
-    Fields = EfuseDefineFields()
-    REGS = EfuseDefineRegisters
-    BURN_BLOCK_DATA_NAMES = Blocks.get_burn_block_data_names()
-    BLOCKS_FOR_KEYS = Blocks.get_blocks_for_keys()
-
     debug = False
     do_not_confirm = False
 
     def __init__(self, esp, skip_connect=False, debug=False, do_not_confirm=False):
+        self.Blocks = EfuseDefineBlocks()
+        self.Fields = EfuseDefineFields()
+        self.REGS = EfuseDefineRegisters
+        self.BURN_BLOCK_DATA_NAMES = self.Blocks.get_burn_block_data_names()
+        self.BLOCKS_FOR_KEYS = self.Blocks.get_blocks_for_keys()
         self._esp = esp
         self.debug = debug
         self.do_not_confirm = do_not_confirm
@@ -89,44 +88,26 @@ class EspEfuses(base_fields.EspEfusesBase):
         ]
         if not skip_connect:
             self.get_coding_scheme_warnings()
-        self.efuses = [
-            EfuseField.from_tuple(
-                self, self.Fields.get(efuse), self.Fields.get(efuse).class_type
-            )
-            for efuse in self.Fields.EFUSES
-        ]
+        self.efuses = [EfuseField.convert(self, efuse) for efuse in self.Fields.EFUSES]
         if skip_connect:
             self.efuses += [
-                EfuseField.from_tuple(
-                    self, self.Fields.get(efuse), self.Fields.get(efuse).class_type
-                )
-                for efuse in self.Fields.KEYBLOCKS_256
+                EfuseField.convert(self, efuse) for efuse in self.Fields.KEYBLOCKS_256
             ]
             self.efuses += [
-                EfuseField.from_tuple(
-                    self, self.Fields.get(efuse), self.Fields.get(efuse).class_type
-                )
-                for efuse in self.Fields.CUSTOM_MAC
+                EfuseField.convert(self, efuse) for efuse in self.Fields.CUSTOM_MAC
             ]
             self.efuses += [
-                EfuseField.from_tuple(
-                    self, self.Fields.get(efuse), self.Fields.get(efuse).class_type
-                )
-                for efuse in self.Fields.ADC_CALIBRATION
+                EfuseField.convert(self, efuse) for efuse in self.Fields.ADC_CALIBRATION
             ]
         else:
             if self.coding_scheme == self.REGS.CODING_SCHEME_NONE:
                 self.efuses += [
-                    EfuseField.from_tuple(
-                        self, self.Fields.get(efuse), self.Fields.get(efuse).class_type
-                    )
+                    EfuseField.convert(self, efuse)
                     for efuse in self.Fields.KEYBLOCKS_256
                 ]
             elif self.coding_scheme == self.REGS.CODING_SCHEME_34:
                 self.efuses += [
-                    EfuseField.from_tuple(
-                        self, self.Fields.get(efuse), self.Fields.get(efuse).class_type
-                    )
+                    EfuseField.convert(self, efuse)
                     for efuse in self.Fields.KEYBLOCKS_192
                 ]
             else:
@@ -135,54 +116,43 @@ class EspEfuses(base_fields.EspEfusesBase):
                 )
             if self["MAC_VERSION"].get() == 1:
                 self.efuses += [
-                    EfuseField.from_tuple(
-                        self, self.Fields.get(efuse), self.Fields.get(efuse).class_type
-                    )
-                    for efuse in self.Fields.CUSTOM_MAC
+                    EfuseField.convert(self, efuse) for efuse in self.Fields.CUSTOM_MAC
                 ]
             if self["BLK3_PART_RESERVE"].get():
                 self.efuses += [
-                    EfuseField.from_tuple(
-                        self, self.Fields.get(efuse), self.Fields.get(efuse).class_type
-                    )
+                    EfuseField.convert(self, efuse)
                     for efuse in self.Fields.ADC_CALIBRATION
                 ]
             self.efuses += [
-                EfuseField.from_tuple(
-                    self, self.Fields.get(efuse), self.Fields.get(efuse).class_type
-                )
-                for efuse in self.Fields.CALC
+                EfuseField.convert(self, efuse) for efuse in self.Fields.CALC
             ]
 
     def __getitem__(self, efuse_name):
         """Return the efuse field with the given name"""
         for e in self.efuses:
-            if efuse_name == e.name:
+            if efuse_name == e.name or any(x == efuse_name for x in e.alt_names):
                 return e
         new_fields = False
         for efuse in self.Fields.CUSTOM_MAC:
-            e = self.Fields.get(efuse)
-            if e.name == efuse_name:
+            if efuse.name == efuse_name or any(
+                x == efuse_name for x in efuse.alt_names
+            ):
                 self.efuses += [
-                    EfuseField.from_tuple(
-                        self, self.Fields.get(efuse), self.Fields.get(efuse).class_type
-                    )
-                    for efuse in self.Fields.CUSTOM_MAC
+                    EfuseField.convert(self, efuse) for efuse in self.Fields.CUSTOM_MAC
                 ]
                 new_fields = True
         for efuse in self.Fields.ADC_CALIBRATION:
-            e = self.Fields.get(efuse)
-            if e.name == efuse_name:
+            if efuse.name == efuse_name or any(
+                x == efuse_name for x in efuse.alt_names
+            ):
                 self.efuses += [
-                    EfuseField.from_tuple(
-                        self, self.Fields.get(efuse), self.Fields.get(efuse).class_type
-                    )
+                    EfuseField.convert(self, efuse)
                     for efuse in self.Fields.ADC_CALIBRATION
                 ]
                 new_fields = True
         if new_fields:
             for e in self.efuses:
-                if efuse_name == e.name:
+                if efuse_name == e.name or any(x == efuse_name for x in e.alt_names):
                     return e
         raise KeyError
 
@@ -263,8 +233,7 @@ class EspEfuses(base_fields.EspEfusesBase):
 
     def summary(self):
         if self["XPD_SDIO_FORCE"].get() == 0:
-            output = "Flash voltage (VDD_SDIO) determined by GPIO12 on reset "
-            "(High for 1.8V, Low/NC for 3.3V)."
+            output = "Flash voltage (VDD_SDIO) determined by GPIO12 on reset (High for 1.8V, Low/NC for 3.3V)"
         elif self["XPD_SDIO_REG"].get() == 0:
             output = "Flash voltage (VDD_SDIO) internal regulator disabled by efuse."
         elif self["XPD_SDIO_TIEH"].get() == 0:
@@ -276,7 +245,7 @@ class EspEfuses(base_fields.EspEfusesBase):
 
 class EfuseField(base_fields.EfuseFieldBase):
     @staticmethod
-    def from_tuple(parent, efuse_tuple, type_class):
+    def convert(parent, efuse):
         return {
             "mac": EfuseMacField,
             "spipin": EfuseSpiPinField,
@@ -284,10 +253,7 @@ class EfuseField(base_fields.EfuseFieldBase):
             "adc_tp": EfuseAdcPointCalibration,
             "wafer": EfuseWafer,
             "pkg": EfusePkg,
-        }.get(type_class, EfuseField)(parent, efuse_tuple)
-
-    def get_info(self):
-        return "%s (BLOCK%d):" % (self.name, self.block)
+        }.get(efuse.class_type, EfuseField)(parent, efuse)
 
 
 class EfuseMacField(EfuseField):
@@ -402,7 +368,9 @@ class EfuseMacField(EfuseField):
 class EfuseWafer(EfuseField):
     def get(self, from_read=True):
         rev_bit0 = self.parent["CHIP_VER_REV1"].get(from_read)
+        assert self.parent["CHIP_VER_REV1"].bit_len == 1
         rev_bit1 = self.parent["CHIP_VER_REV2"].get(from_read)
+        assert self.parent["CHIP_VER_REV2"].bit_len == 1
         apb_ctl_date = self.parent.read_reg(self.parent.REGS.APB_CTL_DATE_ADDR)
         rev_bit2 = (
             apb_ctl_date >> self.parent.REGS.APB_CTL_DATE_S

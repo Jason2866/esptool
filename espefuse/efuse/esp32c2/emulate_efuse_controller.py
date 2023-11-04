@@ -18,13 +18,13 @@ class EmulateEfuseController(EmulateEfuseControllerBase):
     CHIP_NAME = "ESP32-C2"
     mem = None
     debug = False
-    Blocks = EfuseDefineBlocks
-    Fields = EfuseDefineFields
-    REGS = EfuseDefineRegisters
 
     def __init__(self, efuse_file=None, debug=False):
+        self.Blocks = EfuseDefineBlocks
+        self.Fields = EfuseDefineFields()
+        self.REGS = EfuseDefineRegisters
         super(EmulateEfuseController, self).__init__(efuse_file, debug)
-        self.write_reg(self.REGS.EFUSE_STATUS_REG, 1)
+        self.write_reg(self.REGS.EFUSE_CMD_REG, 0)
 
     """ esptool method start >>"""
 
@@ -55,10 +55,10 @@ class EmulateEfuseController(EmulateEfuseControllerBase):
                 self.clean_blocks_wr_regs()
                 self.check_rd_protection_area()
                 self.write_reg(addr, 0)
-                self.write_reg(self.REGS.EFUSE_STATUS_REG, 1)
+                self.write_reg(self.REGS.EFUSE_CMD_REG, 0)
             elif value == self.REGS.EFUSE_READ_CMD:
                 self.write_reg(addr, 0)
-                self.write_reg(self.REGS.EFUSE_STATUS_REG, 1)
+                self.write_reg(self.REGS.EFUSE_CMD_REG, 0)
                 self.save_to_file()
 
     def get_bitlen_of_block(self, blk, wr=False):
@@ -124,8 +124,7 @@ class EmulateEfuseController(EmulateEfuseControllerBase):
                 else:
                     block.set(0)
             else:
-                for e in self.Fields.EFUSES:
-                    field = self.Fields.get(e)
+                for field in self.Fields.EFUSES:
                     if (
                         blk.id == field.block
                         and field.read_disable_bit is not None

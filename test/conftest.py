@@ -40,6 +40,18 @@ def pytest_configure(config):
     global arg_reset_port
     arg_reset_port = config.getoption("--reset-port")
 
+    # register custom markers
+    config.addinivalue_line(
+        "markers",
+        "host_test: mark esptool tests that run on the host machine only "
+        "(don't require a real chip connected).",
+    )
+
+    config.addinivalue_line(
+        "markers",
+        "quick_test: mark esptool tests checking basic functionality.",
+    )
+
 
 def need_to_install_package_err():
     pytest.exit(

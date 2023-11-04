@@ -200,9 +200,23 @@ def generate_signing_key(args):
             )
 
 
+def load_ecdsa_signing_key(keyfile):
+    """Load ECDSA signing key"""
+    try:
+        sk = ecdsa.SigningKey.from_pem(keyfile.read())
+    except ValueError:
+        raise esptool.FatalError(
+            "Incorrect ECDSA private key specified. "
+            "Please check algorithm and/or format."
+        )
+    if sk.curve not in [ecdsa.NIST192p, ecdsa.NIST256p]:
+        raise esptool.FatalError("Supports NIST192p and NIST256p keys only")
+    return sk
+
+
 def _load_ecdsa_signing_key(keyfile):
     """Load ECDSA signing key for Secure Boot V1 only"""
-    sk = ecdsa.SigningKey.from_pem(keyfile.read())
+    sk = load_ecdsa_signing_key(keyfile)
     if sk.curve != ecdsa.NIST256p:
         raise esptool.FatalError(
             "Signing key uses incorrect curve. ESP32 Secure Boot only supports "
@@ -213,7 +227,13 @@ def _load_ecdsa_signing_key(keyfile):
 
 def _load_ecdsa_verifying_key(keyfile):
     """Load ECDSA verifying key for Secure Boot V1 only"""
-    vk = ecdsa.VerifyingKey.from_pem(keyfile.read())
+    try:
+        vk = ecdsa.VerifyingKey.from_pem(keyfile.read())
+    except ValueError:
+        raise esptool.FatalError(
+            "Incorrect ECDSA public key specified. "
+            "Please check algorithm and/or format."
+        )
     if vk.curve != ecdsa.NIST256p:
         raise esptool.FatalError(
             "Signing key uses incorrect curve. ESP32 Secure Boot only supports "
@@ -1637,7 +1657,8 @@ def main(custom_commandline=None):
     p = subparsers.add_parser(
         "digest_private_key",
         help="Generate an SHA-256 digest of the private signing key. "
-        "This can be used as a reproducible secure bootloader or flash encryption key.",
+        "This can be used as a reproducible secure bootloader (only secure boot v1) "
+        "or flash encryption key.",
     )
     p.add_argument(
         "--keyfile",
@@ -1691,7 +1712,7 @@ def main(custom_commandline=None):
         "--aes_xts",
         "-x",
         help="Decrypt data using AES-XTS as used on "
-        "ESP32-S2, ESP32-C2, ESP32-C3 and ESP32-C6",
+        "ESP32-S2, ESP32-C2, ESP32-C3, ESP32-C6 and ESP32-P4",
         action="store_true",
     )
     p.add_argument(
@@ -1731,7 +1752,7 @@ def main(custom_commandline=None):
         "--aes_xts",
         "-x",
         help="Encrypt data using AES-XTS as used on "
-        "ESP32-S2, ESP32-C2, ESP32-C3 and ESP32-C6",
+        "ESP32-S2, ESP32-C2, ESP32-C3, ESP32-C6 and ESP32-P4",
         action="store_true",
     )
     p.add_argument(
@@ -1791,6 +1812,16 @@ def _main():
     except esptool.FatalError as e:
         print("\nA fatal error occurred: %s" % e)
         sys.exit(2)
+    except ValueError as e:
+        try:
+            if [arg for arg in e.args if "Could not deserialize key data." in arg]:
+                print(
+                    "Note: This error originates from the cryptography module. "
+                    "It is likely not a problem with espsecure, "
+                    "please make sure you are using a compatible OpenSSL backend."
+                )
+        finally:
+            raise
 
 
 if __name__ == "__main__":
