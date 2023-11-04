@@ -8,11 +8,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-20.04, windows-latest]
+        os: [macos-latest, ubuntu-latest, windows-latest]
         include:
         - os: macos-latest
           TARGET: macos
-        - os: ubuntu-20.04
+        - os: ubuntu-latest
           TARGET: linux-amd64
         - os: windows-latest
           TARGET: win64
@@ -38,6 +38,7 @@ jobs:
           pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=build_tools/espressif.ico espsecure.py
           pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=build_tools/espressif.ico esp_rfc2217_server.py
       - name: Build stub
+        if: matrix.os == 'ubuntu-latest'
         run: |
           export TOOLCHAIN_DIR=$HOME/toolchain
 
