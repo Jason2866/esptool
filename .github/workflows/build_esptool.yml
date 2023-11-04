@@ -26,7 +26,7 @@ jobs:
           SEPARATOR: ';'
     env:
       DISTPATH: esptool-${{ matrix.TARGET }}
-      STUBS_DIR: /esptool/targets/stub_flasher/
+      STUBS_DIR: ./esptool/targets/stub_flasher/
     steps:
       - name: Checkout repository
         uses: actions/checkout@master
@@ -59,7 +59,7 @@ jobs:
           path: /home/runner/work/esptool/esptool/flasher_stub/build
       - name: Build with PyInstaller
         run: |
-          pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico --add-data=".${{ env.STUBS_DIR }}*.json${{ matrix.SEPARATOR }}${{ env.STUBS_DIR }}" esptool.py
+          pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico --add-data="${{ env.STUBS_DIR }}*.json${{ matrix.SEPARATOR }}${{ env.STUBS_DIR }}" esptool.py
           pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico espefuse.py
           pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico espsecure.py
           pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico esp_rfc2217_server.py
