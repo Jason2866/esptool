@@ -37,8 +37,7 @@ jobs:
           pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=build_tools/espressif.ico espefuse.py
           pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=build_tools/espressif.ico espsecure.py
           pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=build_tools/espressif.ico esp_rfc2217_server.py
-      - name: Build stub (Python 3.8 only)
-        if: matrix.python-version == 3.8
+      - name: Build stub
         run: |
           export TOOLCHAIN_DIR=$HOME/toolchain
 
