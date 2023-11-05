@@ -1948,3 +1948,4 @@ rom_pll_correct_dcap = 0x40001b18;
 rom_phy_en_hw_set_freq = 0x40001b1c;
 rom_phy_dis_hw_set_freq = 0x40001b20;
 rom_pll_vol_cal = 0x40001b24;
+
