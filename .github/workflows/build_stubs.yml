@@ -1,0 +1,31 @@
+name: Build esptool
+
+on: [push, pull_request]
+
+jobs:
+  build-binaries:
+    name: Build stub binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@master
+      - name: Set up Python 3.8
+        uses: actions/setup-python@master
+        with:
+          python-version: 3.8
+      - name: Build stub
+        run: |
+          export TOOLCHAIN_DIR=$HOME/toolchain
+          export ESP8266_BINDIR=$TOOLCHAIN_DIR/xtensa-lx106-elf/bin
+          export ESP32_BINDIR=$TOOLCHAIN_DIR/xtensa-esp32-elf/bin
+          export ESP32S2_BINDIR=$TOOLCHAIN_DIR/xtensa-esp32s2-elf/bin
+          export ESP32S3_BINDIR=$TOOLCHAIN_DIR/xtensa-esp32s3-elf/bin
+          export ESP32C3_BINDIR=$TOOLCHAIN_DIR/riscv32-esp-elf/bin
+          export PATH=$PATH:$ESP8266_BINDIR:$ESP32_BINDIR:$ESP32S2_BINDIR:$ESP32S3_BINDIR:$ESP32C3_BINDIR
+          ./test/ci/setup_ci_build_env.sh
+          make -C flasher_stub V=1
+      - name: Archive stubs artifact
+        uses: actions/upload-artifact@master
+        with:
+          name: stubs
+          path: /home/runner/work/esptool/esptool/flasher_stub/build
