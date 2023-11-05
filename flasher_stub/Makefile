@@ -36,11 +36,11 @@ CROSS_8266 ?= xtensa-lx106-elf-
 CROSS_32 ?= xtensa-esp32-elf-
 CROSS_32S2 ?= xtensa-esp32s2-elf-
 CROSS_32S3 ?= xtensa-esp32s3-elf-
-CROSS_ESPRISCV32 ?= riscv32-esp-elf-
-
-# extra CFLAGS to be passed on the compiler, in addition to the stock ones
-EXTRA_CFLAGS ?=
-EXTRA_CFLAGS_ESPRISCV32 ?=
+CROSS_32C3 ?= riscv32-esp-elf-
+CROSS_32C6BETA ?= riscv32-esp-elf-
+CROSS_32C6 ?= riscv32-esp-elf-
+CROSS_32H2 ?= riscv32-esp-elf-
+CROSS_32C2 ?= riscv32-esp-elf-
 
 # Python command to invoke wrap_stub.py
 WRAP_STUB ?= ./wrap_stub.py
@@ -63,40 +63,12 @@ STUB_ELF_32S3_BETA_2 = $(BUILD_DIR)/$(STUB)_32s3beta2.elf
 STUB_ELF_32S3 = $(BUILD_DIR)/$(STUB)_32s3.elf
 STUB_ELF_32C3 = $(BUILD_DIR)/$(STUB)_32c3.elf
 STUB_ELF_32C6BETA = $(BUILD_DIR)/$(STUB)_32c6beta.elf
+STUB_ELF_32C6 = $(BUILD_DIR)/$(STUB)_32c6.elf
 STUB_ELF_32H2_BETA_1 = $(BUILD_DIR)/$(STUB)_32h2beta1.elf
 STUB_ELF_32H2_BETA_2 = $(BUILD_DIR)/$(STUB)_32h2beta2.elf
-STUB_ELF_32C2 = $(BUILD_DIR)/$(STUB)_32c2.elf
-STUB_ELF_32C6 = $(BUILD_DIR)/$(STUB)_32c6.elf
 STUB_ELF_32H2 = $(BUILD_DIR)/$(STUB)_32h2.elf
-STUB_ELF_32P4 = $(BUILD_DIR)/$(STUB)_32p4.elf
-
+STUB_ELF_32C2 = $(BUILD_DIR)/$(STUB)_32c2.elf
 STUB_PY = $(BUILD_DIR)/$(STUB)_snippet.py
-
-STUBS_ELF =
-ifneq ($(WITHOUT_ESP8266),1)
-STUBS_ELF += \
-  $(STUB_ELF_8266)
-endif
-
-ifneq ($(WITHOUT_ESP32_XTENSA),1)
-STUBS_ELF += \
-  $(STUB_ELF_32) \
-  $(STUB_ELF_32S2) \
-  $(STUB_ELF_32S3_BETA_2) \
-  $(STUB_ELF_32S3)
-endif
-
-ifneq ($(WITHOUT_ESP32_RISCV32),1)
-STUBS_ELF += \
-  $(STUB_ELF_32C3) \
-  $(STUB_ELF_32C6BETA) \
-  $(STUB_ELF_32H2_BETA_1) \
-  $(STUB_ELF_32H2_BETA_2) \
-  $(STUB_ELF_32C2) \
-  $(STUB_ELF_32C6) \
-  $(STUB_ELF_32H2) \
-  $(STUB_ELF_32P4)
-endif
 
 .PHONY: all clean embed
 
@@ -107,13 +79,11 @@ $(BUILD_DIR):
 
 CFLAGS = -std=c99 -Wall -Werror -Os \
          -mtext-section-literals -mlongcalls -nostdlib -fno-builtin -flto \
-         -Wl,-static -g -ffunction-sections -Wl,--gc-sections -Iinclude -Lld \
-         $(EXTRA_CFLAGS)
+         -Wl,-static -g -ffunction-sections -Wl,--gc-sections -Iinclude -Lld
 CFLAGS_ESPRISCV32 = -std=c99 -Wall -Werror -Os \
-		 -march=rv32imc -mabi=ilp32 -msmall-data-limit=0 \
+		 -march=rv32imc -msmall-data-limit=0 \
          -nostdlib -fno-builtin -flto \
-         -Wl,-static -g -ffunction-sections -Wl,--gc-sections -Iinclude -Lld \
-         $(EXTRA_CFLAGS_ESPRISCV32)
+         -Wl,-static -g -ffunction-sections -Wl,--gc-sections -Iinclude -Lld
 LDLIBS = -lgcc
 
 $(STUB_ELF_8266): $(SRCS) $(SRCS_8266) $(BUILD_DIR) ld/stub_8266.ld | Makefile
@@ -130,7 +100,7 @@ $(STUB_ELF_32S2): $(SRCS) $(BUILD_DIR) ld/stub_32s2.ld
 
 $(STUB_ELF_32S3_BETA_2): $(SRCS) $(BUILD_DIR) ld/stub_32s3_beta_2.ld
 	@echo "  CC(32S3)   $^ -> $@"
-	$(Q) $(CROSS_32S3)gcc $(CFLAGS) -DESP32S3=1 -DESP32S3BETA2=1 -Tstub_32s3_beta_2.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
+	$(Q) $(CROSS_32S3)gcc $(CFLAGS) -DESP32S3=1 -Tstub_32s3_beta_2.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
 
 $(STUB_ELF_32S3): $(SRCS) $(BUILD_DIR) ld/stub_32s3.ld
 	@echo "  CC(32S3)   $^ -> $@"
@@ -138,35 +108,39 @@ $(STUB_ELF_32S3): $(SRCS) $(BUILD_DIR) ld/stub_32s3.ld
 
 $(STUB_ELF_32C3): $(SRCS) $(BUILD_DIR) ld/stub_32c3.ld
 	@echo "  CC(32C3)   $^ -> $@"
-	$(Q) $(CROSS_ESPRISCV32)gcc $(CFLAGS_ESPRISCV32) -DESP32C3=1 -Tstub_32c3.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
+	$(Q) $(CROSS_32C3)gcc $(CFLAGS_ESPRISCV32) -DESP32C3=1 -Tstub_32c3.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
 
 $(STUB_ELF_32C6BETA): $(SRCS) $(BUILD_DIR) ld/stub_32c6_beta.ld
-	@echo "  CC(32C6BETA)   $^ -> $@"
-	$(Q) $(CROSS_ESPRISCV32)gcc $(CFLAGS_ESPRISCV32) -DESP32C6BETA=1 -Tstub_32c6_beta.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
-
-$(STUB_ELF_32H2_BETA_1): $(SRCS) $(BUILD_DIR) ld/stub_32h2_beta_1.ld
-	@echo "  CC(32H2BETA1)   $^ -> $@"
-	$(Q) $(CROSS_ESPRISCV32)gcc $(CFLAGS_ESPRISCV32) -DESP32H2BETA1=1 -DESP32H2BETA1=1 -Tstub_32h2_beta_1.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
-
-$(STUB_ELF_32H2_BETA_2): $(SRCS) $(BUILD_DIR) ld/stub_32h2_beta_2.ld
-	@echo "  CC(32H2BETA2)   $^ -> $@"
-	$(Q) $(CROSS_ESPRISCV32)gcc $(CFLAGS_ESPRISCV32) -DESP32H2BETA2=1 -DESP32H2BETA2=1 -Tstub_32h2_beta_2.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
-
-$(STUB_ELF_32C2): $(SRCS) $(BUILD_DIR) ld/stub_32c2.ld
-	@echo "  CC(32C2)   $^ -> $@"
-	$(Q) $(CROSS_ESPRISCV32)gcc $(CFLAGS_ESPRISCV32) -DESP32C2=1 -Tstub_32c2.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
+	@echo "  CC(32C6)   $^ -> $@"
+	$(Q) $(CROSS_32C6BETA)gcc $(CFLAGS_ESPRISCV32) -DESP32C6=1 -Tstub_32c6_beta.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
 
 $(STUB_ELF_32C6): $(SRCS) $(BUILD_DIR) ld/stub_32c6.ld
 	@echo "  CC(32C6)   $^ -> $@"
-	$(Q) $(CROSS_ESPRISCV32)gcc $(CFLAGS_ESPRISCV32) -DESP32C6=1 -Tstub_32c6.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
+	$(Q) $(CROSS_32C6)gcc $(CFLAGS_ESPRISCV32) -DESP32C6=1 -Tstub_32c6.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
+
+$(STUB_ELF_32H2_BETA_1): $(SRCS) $(BUILD_DIR) ld/stub_32h2_beta_1.ld
+	@echo "  CC(32H2)   $^ -> $@"
+	$(Q) $(CROSS_32H2)gcc $(CFLAGS_ESPRISCV32) -DESP32H2=1 -DESP32H2BETA1=1 -Tstub_32h2_beta_1.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
+
+$(STUB_ELF_32H2_BETA_2): $(SRCS) $(BUILD_DIR) ld/stub_32h2_beta_2.ld
+	@echo "  CC(32H2)   $^ -> $@"
+	$(Q) $(CROSS_32H2)gcc $(CFLAGS_ESPRISCV32) -DESP32H2=1 -DESP32H2BETA2=1 -Tstub_32h2_beta_2.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
 
 $(STUB_ELF_32H2): $(SRCS) $(BUILD_DIR) ld/stub_32h2.ld
 	@echo "  CC(32H2)   $^ -> $@"
-	$(Q) $(CROSS_ESPRISCV32)gcc $(CFLAGS_ESPRISCV32) -DESP32H2=1 -Tstub_32h2.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
+	$(Q) $(CROSS_32H2)gcc $(CFLAGS_ESPRISCV32) -DESP32H2=1 -DESP32H2=1 -Tstub_32h2.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
 
-$(STUB_ELF_32P4): $(SRCS) $(BUILD_DIR) ld/stub_32p4.ld
-	@echo "  CC(32P4)   $^ -> $@"
-	$(Q) $(CROSS_ESPRISCV32)gcc $(CFLAGS_ESPRISCV32) -DESP32P4=1 -Tstub_32p4.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
+$(STUB_ELF_32C2): $(SRCS) $(BUILD_DIR) ld/stub_32c2.ld
+	@echo "  CC(32C2)   $^ -> $@"
+	$(Q) $(CROSS_32C2)gcc $(CFLAGS_ESPRISCV32) -DESP32C2=1 -Tstub_32c2.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
+
+$(STUB_PY): $(STUB_ELF_8266) $(STUB_ELF_32) $(STUB_ELF_32S2) $(STUB_ELF_32S3_BETA_2) $(STUB_ELF_32S3) $(STUB_ELF_32C3) $(STUB_ELF_32C6BETA) $(STUB_ELF_32C6) $(STUB_ELF_32H2_BETA_1) $(STUB_ELF_32H2_BETA_2) $(STUB_ELF_32H2) $(STUB_ELF_32C2) wrap_stub.py
+	@echo "  WRAP $^ -> $@"
+	$(Q) $(WRAP_STUB) --out-file $@ $(filter %.elf,$^)
+
+embed: $(STUB_ELF_8266) $(STUB_ELF_32) $(STUB_ELF_32S2) $(STUB_ELF_32S3_BETA_2) $(STUB_ELF_32S3) $(STUB_ELF_32C3) $(STUB_ELF_32C6BETA) $(STUB_ELF_32C6) $(STUB_ELF_32H2_BETA_1) $(STUB_ELF_32H2_BETA_2) $(STUB_ELF_32H2) $(STUB_ELF_32C2) wrap_stub.py
+	@echo "  WRAP $^ -> esptool.py"
+	$(Q) $(WRAP_STUB) $(filter %.elf,$^)
 
 clean:
 	$(Q) rm -rf $(BUILD_DIR)
