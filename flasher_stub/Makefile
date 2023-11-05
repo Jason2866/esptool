@@ -42,6 +42,10 @@ CROSS_32C6 ?= riscv32-esp-elf-
 CROSS_32H2 ?= riscv32-esp-elf-
 CROSS_32C2 ?= riscv32-esp-elf-
 
+# extra CFLAGS to be passed on the compiler, in addition to the stock ones
+EXTRA_CFLAGS ?=
+EXTRA_CFLAGS_ESPRISCV32 ?=
+
 # Python command to invoke wrap_stub.py
 WRAP_STUB ?= ./wrap_stub.py
 
