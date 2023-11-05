@@ -61,19 +61,15 @@ if os.name == "nt":
     entry_points = {
         'console_scripts': [
             'esptool.py=esptool:_main',
-            'espsecure.py=espsecure:_main',
-            'espefuse.py=espefuse:_main',
         ],
     }
 else:
-    scripts = ['esptool.py',
-               'espsecure.py',
-               'espefuse.py']
+    scripts = ['esptool.py']
     entry_points = None
 
 setup(
     name='esptool',
-    py_modules=['esptool', 'espsecure', 'espefuse'],
+    py_modules=['esptool'],
     version=find_version('esptool.py'),
     description='A serial utility to communicate & flash code to Espressif chips.',
     long_description=long_description,
@@ -96,11 +92,6 @@ setup(
         'Topic :: Software Development :: Embedded Systems',
         'Environment :: Console',
         'License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)',
-        'Programming Language :: Python :: 2.7',
-        'Programming Language :: Python :: 3.4',  # Note: when dropping 3.4 support we can also remove the check in setup_requires
-        'Programming Language :: Python :: 3.5',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
     ],
