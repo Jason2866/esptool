@@ -88,7 +88,8 @@ CFLAGS = -std=c99 -Wall -Werror -Os \
 CFLAGS_ESPRISCV32 = -std=c99 -Wall -Werror -Os \
 		 -march=rv32imc -mabi=ilp32 -msmall-data-limit=0 \
          -nostdlib -fno-builtin -flto \
-         -Wl,-static -g -ffunction-sections -Wl,--gc-sections -Iinclude -Lld
+         -Wl,-static -g -ffunction-sections -Wl,--gc-sections -Iinclude -Lld \
+         $(EXTRA_CFLAGS_ESPRISCV32)
 LDLIBS = -lgcc
 
 $(STUB_ELF_8266): $(SRCS) $(SRCS_8266) $(BUILD_DIR) ld/stub_8266.ld | Makefile
