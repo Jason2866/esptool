@@ -38,6 +38,7 @@ CROSS_32S2 ?= xtensa-esp32s2-elf-
 CROSS_32S3 ?= xtensa-esp32s3-elf-
 CROSS_32C3 ?= riscv32-esp-elf-
 CROSS_32C6BETA ?= riscv32-esp-elf-
+CROSS_32C6 ?= riscv32-esp-elf-
 CROSS_32H2 ?= riscv32-esp-elf-
 CROSS_32C2 ?= riscv32-esp-elf-
 
@@ -62,8 +63,10 @@ STUB_ELF_32S3_BETA_2 = $(BUILD_DIR)/$(STUB)_32s3beta2.elf
 STUB_ELF_32S3 = $(BUILD_DIR)/$(STUB)_32s3.elf
 STUB_ELF_32C3 = $(BUILD_DIR)/$(STUB)_32c3.elf
 STUB_ELF_32C6BETA = $(BUILD_DIR)/$(STUB)_32c6beta.elf
+STUB_ELF_32C6 = $(BUILD_DIR)/$(STUB)_32c6.elf
 STUB_ELF_32H2_BETA_1 = $(BUILD_DIR)/$(STUB)_32h2beta1.elf
 STUB_ELF_32H2_BETA_2 = $(BUILD_DIR)/$(STUB)_32h2beta2.elf
+STUB_ELF_32H2 = $(BUILD_DIR)/$(STUB)_32h2.elf
 STUB_ELF_32C2 = $(BUILD_DIR)/$(STUB)_32c2.elf
 STUB_PY = $(BUILD_DIR)/$(STUB)_snippet.py
 
@@ -111,6 +114,10 @@ $(STUB_ELF_32C6BETA): $(SRCS) $(BUILD_DIR) ld/stub_32c6_beta.ld
 	@echo "  CC(32C6)   $^ -> $@"
 	$(Q) $(CROSS_32C6BETA)gcc $(CFLAGS_ESPRISCV32) -DESP32C6=1 -Tstub_32c6_beta.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
 
+$(STUB_ELF_32C6): $(SRCS) $(BUILD_DIR) ld/stub_32c6.ld
+	@echo "  CC(32C6)   $^ -> $@"
+	$(Q) $(CROSS_32C6)gcc $(CFLAGS_ESPRISCV32) -DESP32C6=1 -Tstub_32c6.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
+
 $(STUB_ELF_32H2_BETA_1): $(SRCS) $(BUILD_DIR) ld/stub_32h2_beta_1.ld
 	@echo "  CC(32H2)   $^ -> $@"
 	$(Q) $(CROSS_32H2)gcc $(CFLAGS_ESPRISCV32) -DESP32H2=1 -DESP32H2BETA1=1 -Tstub_32h2_beta_1.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
@@ -118,6 +125,10 @@ $(STUB_ELF_32H2_BETA_1): $(SRCS) $(BUILD_DIR) ld/stub_32h2_beta_1.ld
 $(STUB_ELF_32H2_BETA_2): $(SRCS) $(BUILD_DIR) ld/stub_32h2_beta_2.ld
 	@echo "  CC(32H2)   $^ -> $@"
 	$(Q) $(CROSS_32H2)gcc $(CFLAGS_ESPRISCV32) -DESP32H2=1 -DESP32H2BETA2=1 -Tstub_32h2_beta_2.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
+
+$(STUB_ELF_32H2): $(SRCS) $(BUILD_DIR) ld/stub_32h2.ld
+	@echo "  CC(32H2)   $^ -> $@"
+	$(Q) $(CROSS_32H2)gcc $(CFLAGS_ESPRISCV32) -DESP32H2=1 -DESP32H2=1 -Tstub_32h2.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
 
 $(STUB_ELF_32C2): $(SRCS) $(BUILD_DIR) ld/stub_32c2.ld
 	@echo "  CC(32C2)   $^ -> $@"
