@@ -1,6 +1,6 @@
 name: Build stubs for esptool v3.x
 
-on: [push, pull_request]
+on: push
 
 jobs:
   build-binaries:
