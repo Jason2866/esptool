@@ -949,6 +949,15 @@ class TestKeepImageSettings(EsptoolTestCase):
 class TestLoadRAM(EsptoolTestCase):
     # flashing an application not supporting USB-CDC will make
     # /dev/ttyACM0 disappear and USB-CDC tests will not work anymore
+
+    def verify_output(self, expected_out: List[bytes]):
+        """Verify that at least one element of expected_out is in serial output"""
+        with serial.serial_for_url(arg_port, arg_baud, rtscts=True) as p:
+            p.timeout = 5
+            output = p.read(100)
+            print(f"Output: {output}")
+            assert any(item in output for item in expected_out)
+
     @pytest.mark.quick_test
     def test_load_ram(self):
         """Verify load_ram command
@@ -957,18 +966,9 @@ class TestLoadRAM(EsptoolTestCase):
         "Hello world!\n" to the serial port.
         """
         self.run_esptool(f"load_ram images/ram_helloworld/helloworld-{arg_chip}.bin")
-        try:
-            p = serial.serial_for_url(arg_port, arg_baud)
-            p.timeout = 5
-            output = p.read(100)
-            print(f"Output: {output}")
-            assert (
-                b"Hello world!" in output  # xtensa
-                or b'\xce?\x13\x05\x04\xd0\x97A\x11"\xc4\x06\xc67\x04' in output  # C3
-            )
-        finally:
-            p.close()
-
+        self.verify_output(
+            [b"Hello world!", b'\xce?\x13\x05\x04\xd0\x97A\x11"\xc4\x06\xc67\x04']
+        )
 
 class TestDeepSleepFlash(EsptoolTestCase):
     @pytest.mark.skipif(arg_chip != "esp8266", reason="ESP8266 only")
