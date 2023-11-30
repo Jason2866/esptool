@@ -1049,7 +1049,13 @@ class TestLoadRAM(EsptoolTestCase):
 
     def verify_output(self, expected_out: List[bytes]):
         """Verify that at least one element of expected_out is in serial output"""
-        with serial.serial_for_url(arg_port, arg_baud) as p:
+        # Setting rtscts to true enables hardware flow control.
+        # This removes unwanted RTS logic level changes for some machines
+        # (and, therefore, chip resets)
+        # when the port is opened by the following function.
+        # As a result, the app loaded to RAM has a chance to run and send
+        # "Hello world" data without unwanted chip reset.
+        with serial.serial_for_url(arg_port, arg_baud, rtscts=True) as p:
             p.timeout = 5
             output = p.read(100)
             print(f"Output: {output}")
