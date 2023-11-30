@@ -171,8 +171,14 @@ void stub_tx_one_char(char c)
 #endif // WITH_USB_OTG
   uart_tx_one_char(c);
 #if WITH_USB_JTAG_SERIAL
+  static int transferred_without_flush = 0;
   if (stub_uses_usb_jtag_serial()){
-    stub_tx_flush();
+    // Defer flushing until we have a full packet or a 0xc0 byte to increase throughput.
+    transferred_without_flush++;
+    if( c == '\xc0' || transferred_without_flush == 64 ) {
+      stub_tx_flush();
+      transferred_without_flush = 0;
+    }
   }
 #endif // WITH_USB_JTAG_SERIAL
 }
@@ -296,6 +302,15 @@ void stub_io_set_baudrate(uint32_t current_baud, uint32_t new_baud)
     return;
   }
 #endif // WITH_USB_OTG
+#if WITH_USB_JTAG_SERIAL
+  /* Workaround for ESP32-S3: UART baud rate divider is not set correctly by get_new_uart_divider. */
+  if (stub_uses_usb_jtag_serial()) {
+    ets_delay_us(10000);
+    uart_div_modify(0, 0);
+    ets_delay_us(1000);
+    return;
+  }
+#endif
   ets_delay_us(10000);
   uart_div_modify(0, get_new_uart_divider(current_baud, new_baud));
   ets_delay_us(1000);
