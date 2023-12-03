@@ -185,9 +185,7 @@ def main(argv=None, esp=None):
     parser_load_ram = subparsers.add_parser(
         "load_ram", help="Download an image to RAM and execute"
     )
-    parser_load_ram.add_argument("filename",
-        help="Firmware image"
-    )
+    parser_load_ram.add_argument("filename", help="Firmware image")
 
     parser_dump_mem = subparsers.add_parser(
         "dump_mem", help="Dump arbitrary memory to disk"
