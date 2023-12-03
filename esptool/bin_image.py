@@ -10,8 +10,6 @@ import io
 import os
 import re
 import struct
-import tempfile
-from typing import BinaryIO, Optional
 
 from .loader import ESPLoader
 from .targets import (
