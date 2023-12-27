@@ -173,9 +173,10 @@ void stub_tx_one_char(char c)
 #if WITH_USB_JTAG_SERIAL
   static int transferred_without_flush = 0;
   if (stub_uses_usb_jtag_serial()){
-    // Defer flushing until we have a full packet or a 0xc0 byte to increase throughput.
+    // Defer flushing until we have a (full - 1) packet or a 0xc0 byte to increase throughput.
+    // Note that deferring flushing until we have a full packet causes hang-ups on some platforms.
     transferred_without_flush++;
-    if( c == '\xc0' || transferred_without_flush == 64 ) {
+    if( c == '\xc0' || transferred_without_flush == 63 ) {
       stub_tx_flush();
       transferred_without_flush = 0;
     }
