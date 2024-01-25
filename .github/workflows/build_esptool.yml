@@ -1,6 +1,10 @@
 name: Build esptool
 
-on: [push, pull_request]
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+    - '.github/**' # Ignore changes towards the .github directory
 
 jobs:
   build-esptool-binaries:
@@ -8,27 +12,18 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-20.04, windows-latest, ARM, ARM64]
+        os: [macos-latest, ubuntu-latest, windows-latest]
         include:
         - os: macos-latest
           TARGET: macos
           SEPARATOR: ':'
-        - os: ubuntu-20.04
+        - os: ubuntu-latest
           TARGET: linux-amd64
           SEPARATOR: ':'
         - os: windows-latest
           TARGET: win64
           EXTEN: .exe
           SEPARATOR: ';'
-        - os: ARM
-          CONTAINER: python:3.8-bullseye
-          TARGET: arm
-          SEPARATOR: ':'
-        - os: ARM64
-          CONTAINER: python:3.8-bullseye
-          TARGET: arm64
-          SEPARATOR: ':'
-    container: ${{ matrix.CONTAINER }} # use python container on ARM
     env:
       DISTPATH: esptool-${{ matrix.TARGET }}
       STUBS_DIR: ./esptool/targets/stub_flasher/
@@ -38,8 +33,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@master
       - name: Set up Python 3.8
-        # Skip setting python on ARM because of missing compatibility: https://github.com/actions/setup-python/issues/108
-        if: matrix.os != 'ARM' && matrix.os != 'ARM64'
         uses: actions/setup-python@master
         with:
           python-version: 3.8
@@ -48,78 +41,48 @@ jobs:
           python -m pip install --upgrade pip
           pip install pyinstaller
           pip install --user -e .
-      - name: Build with PyInstaller
+      - name: Build stub
+        if: matrix.os == 'ubuntu-latest'
         run: |
-          pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico --add-data="${{ env.STUBS_DIR }}*.json${{ matrix.SEPARATOR }}${{ env.STUBS_DIR }}" esptool.py
-          pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico --add-data="${{ env.EFUSE_DIR }}*.yaml${{ matrix.SEPARATOR }}${{ env.EFUSE_DIR }}" espefuse.py
-          pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico espsecure.py
-          pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico esp_rfc2217_server.py
-      - name: Sign binaries
-        if: matrix.os == 'windows-latest' && github.event_name != 'pull_request'
-        env:
-          CERTIFICATE: ${{ secrets.CERTIFICATE }}
-          CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
-        shell: pwsh
-        run: |
-          ./ci/Sign-File.ps1 -Path ./${{ env.DISTPATH }}/esptool.exe
-          ./ci/Sign-File.ps1 -Path ./${{ env.DISTPATH }}/espefuse.exe
-          ./ci/Sign-File.ps1 -Path ./${{ env.DISTPATH }}/espsecure.exe
-          ./ci/Sign-File.ps1 -Path ./${{ env.DISTPATH }}/esp_rfc2217_server.exe
-      - name: Test binaries
-        shell: bash
-        run: |
-          ./${{ env.DISTPATH }}/esptool${{ matrix.EXTEN }} -h
-          ./${{ env.DISTPATH }}/espefuse${{ matrix.EXTEN }} -h
-          ./${{ env.DISTPATH }}/espsecure${{ matrix.EXTEN }} -h
-          ./${{ env.DISTPATH }}/esp_rfc2217_server${{ matrix.EXTEN }} -h
-      - name: Add license and readme
-        shell: bash
-        run: mv LICENSE README.md ./${{ env.DISTPATH }}
-      - name: Archive artifact
+          export TOOLCHAIN_DIR=$HOME/toolchain
+          export ESP8266_BINDIR=$TOOLCHAIN_DIR/xtensa-lx106-elf/bin
+          export ESP32_BINDIR=$TOOLCHAIN_DIR/xtensa-esp32-elf/bin
+          export ESP32S2_BINDIR=$TOOLCHAIN_DIR/xtensa-esp32s2-elf/bin
+          export ESP32S3_BINDIR=$TOOLCHAIN_DIR/xtensa-esp32s3-elf/bin
+          export ESP32C3_BINDIR=$TOOLCHAIN_DIR/riscv32-esp-elf/bin
+          export PATH=$PATH:$ESP8266_BINDIR:$ESP32_BINDIR:$ESP32S2_BINDIR:$ESP32S3_BINDIR:$ESP32C3_BINDIR
+          ./ci/setup_ci_build_env.sh
+          make -C flasher_stub V=1
+      - name: Archive stubs artifact
+        if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@master
         with:
-          name: ${{ env.DISTPATH }}
-          path: ${{ env.DISTPATH }}
+          name: stubs
+          path: /home/runner/work/esptool/esptool/flasher_stub/build
 
-  create_release:
-    name: Create GitHub release
-    if: startsWith(github.ref, 'refs/tags/') && !(contains(github.ref_name, 'dev'))
+  push_stubs:
+    name: Commit changed files
     needs: build-esptool-binaries
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - name: Get version
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-        shell: bash
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@master
         with:
           fetch-depth: 0
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install --user -e ".[dev]"
-      - name: Generate changelog
-        run: |
-          cz changelog ${{ steps.get_version.outputs.VERSION }} --template ci/gh_changelog_template.md.j2 --file-name changelog_body.md
-          cat changelog_body.md
-      - name: Download built binaries
+      - name: Download builded stubs
         uses: actions/download-artifact@master
-      - name: Compress and rename binaries
-        run: |
-          for dir in esptool-*; do
-            zip -r "esptool-v${{ steps.get_version.outputs.VERSION }}-${dir#esptool-}.zip" "$dir"
-          done
-      - name: Create release
-        id: create_release
-        uses: softprops/action-gh-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          body_path: changelog_body.md
-          name: Version ${{ steps.get_version.outputs.VERSION }}
-          draft: true
-          prerelease: false
-          files: esptool-v${{ steps.get_version.outputs.VERSION }}-*.zip
+          name: stubs
+          path: ./mv_stubs
+      - name: Display structure of downloaded files
+        run: |
+          ls -R
+      - name: Move stubs in folder
+        run: |
+          rm ./esptool/targets/stub_flasher/*
+          cp -R ./mv_stubs/*.json ./esptool/targets/stub_flasher
+          ls -R ./esptool/targets/stub_flasher
+          rm -rf ./mv_stubs
+      - uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: Stubs updated
