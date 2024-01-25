@@ -21,7 +21,7 @@ vendor_dir = os.path.join(parent_dir, 'vendor')
 
 sys.path.append(vendor_dir)
 
-from intelhex import IntelHex
+from intelhex import HexRecordError, IntelHex
 
 from .loader import ESPLoader
 from .targets import (
