@@ -55,14 +55,18 @@ def intel_hex_to_bin(file: BinaryIO, start_addr: Optional[int] = None) -> Binary
     INTEL_HEX_MAGIC = b":"
     magic = file.read(1)
     file.seek(0)
-    if magic == INTEL_HEX_MAGIC:
-        ih = IntelHex()
-        ih.loadhex(file.name)
-        file.close()
-        bin = tempfile.NamedTemporaryFile(suffix=".bin", delete=False)
-        ih.tobinfile(bin, start=start_addr)
-        return bin
-    else:
+    try:
+        if magic == INTEL_HEX_MAGIC:
+            ih = IntelHex()
+            ih.loadhex(file.name)
+            file.close()
+            bin = tempfile.NamedTemporaryFile(suffix=".bin", delete=False)
+            ih.tobinfile(bin, start=start_addr)
+            return bin
+        else:
+            return file
+    except HexRecordError:
+        # file started with HEX magic but the rest was not according to the standard
         return file
 
 
