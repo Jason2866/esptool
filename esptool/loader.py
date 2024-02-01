@@ -300,7 +300,17 @@ class ESPLoader(object):
 
         if isinstance(port, str):
             try:
-                self._port = serial.serial_for_url(port)
+                self._port = serial.serial_for_url(
+                    port, exclusive=True, do_not_open=True
+                )
+                if sys.platform == "win32":
+                    # When opening a port on Windows,
+                    # the RTS/DTR (active low) lines
+                    # need to be set to False (pulled high)
+                    # to avoid unwanted chip reset
+                    self._port.rts = False
+                    self._port.dtr = False
+                self._port.open()
             except serial.serialutil.SerialException as e:
                 port_issues = [
                     [  # does not exist error
@@ -1641,12 +1651,14 @@ class HexFormatter(object):
             while len(s) > 0:
                 line = s[:16]
                 ascii_line = "".join(
-                    c
-                    if (
-                        c == " "
-                        or (c in string.printable and c not in string.whitespace)
+                    (
+                        c
+                        if (
+                            c == " "
+                            or (c in string.printable and c not in string.whitespace)
+                        )
+                        else "."
                     )
-                    else "."
                     for c in line.decode("ascii", "replace")
                 )
                 s = s[16:]

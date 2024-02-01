@@ -41,6 +41,7 @@ cache:
     - host_test
   dependencies: []
   before_script:
+    - pip install --upgrade pip
     - pip install -e .[dev] --prefer-binary
 
 version_check:
@@ -128,12 +129,12 @@ check_python_style:
       codequality: code_quality_report.json
     when: on_failure
   script:
-    # This step installs any 'dev' dependencies (ie flake8, Black)
+    # This step installs any 'dev' dependencies (ie ruff)
     # The runner should cache the downloads, so still quite fast.
     - pip install -e .[dev] --prefer-binary
-    - python -m flake8 --exit-zero --format gl-codeclimate --output-file code_quality_report.json
-    - python -m flake8
-    - python -m black --check --diff .
+    - python -m ruff check --exit-zero --output-format=gitlab --output-file=code_quality_report.json
+    - python -m ruff check
+    - python -m ruff format
 
 .run_esptool: &run_esptool |
   esptool.py --help
@@ -382,6 +383,14 @@ target_esp32h2_jtag_serial:
     - esptool_esp32h2_jtag_serial_target
   script:
     - coverage run --parallel-mode -m pytest ${CI_PROJECT_DIR}/test/test_esptool.py --port /dev/serial_ports/ESP32H2_JTAG_SERIAL --preload-port /dev/serial_ports/ESP32H2_PRELOAD --chip esp32h2 --baud 115200
+
+# ESP32P4
+target_esp32p4:
+  extends: .target_esptool_test
+  tags:
+    - esptool_esp32p4_target
+  script:
+    - coverage run --parallel-mode -m pytest ${CI_PROJECT_DIR}/test/test_esptool.py --port /dev/serial_ports/ESP32P4 --chip esp32p4 --baud 115200
 
 .windows_test:
   stage: test

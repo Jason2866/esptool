@@ -184,7 +184,7 @@ class EsptoolTestCase:
             preload
             and arg_preload_port
             and arg_chip
-            in ["esp32c3", "esp32s3", "esp32c6", "esp32h2"]  # With USB-JTAG/Serial
+            in ["esp32c3", "esp32s3", "esp32c6", "esp32h2", "esp32p4"]  # With U-JS
         ):
             port_index = base_cmd.index("--port") + 1
             base_cmd[port_index] = arg_preload_port  # Set the port to the preload one
@@ -251,6 +251,12 @@ class EsptoolTestCase:
             dump_file.close()
             os.unlink(dump_file.name)
 
+    def diff(self, readback, compare_to):
+        for rb_b, ct_b, offs in zip(readback, compare_to, range(len(readback))):
+            assert (
+                rb_b == ct_b
+            ), f"First difference at offset {offs:#x} Expected {ct_b} got {rb_b}"
+
     def verify_readback(
         self, offset, length, compare_to, is_bootloader=False, spi_connection=None
     ):
@@ -268,10 +274,7 @@ class EsptoolTestCase:
             assert ct[0] == rb[0], "First bytes should be identical"
             rb = rb[8:]
             ct = ct[8:]
-        for rb_b, ct_b, offs in zip(rb, ct, range(len(rb))):
-            assert (
-                rb_b == ct_b
-            ), f"First difference at offset {offs:#x} Expected {ct_b} got {rb_b}"
+        self.diff(rb, ct)
 
 
 @pytest.mark.skipif(arg_chip != "esp32", reason="ESP32 only")
@@ -735,6 +738,32 @@ class TestFlashSizes(EsptoolTestCase):
         # header should be the same as in the .bin file
         self.verify_readback(offset, image_len, image)
 
+    @pytest.mark.skipif(
+        arg_chip == "esp8266", reason="ESP8266 does not support read_flash_slow"
+    )
+    def test_read_nostub_high_offset(self):
+        offset = 0x300000
+        length = 1024
+        self.run_esptool(f"write_flash -fs detect {offset} images/one_kb.bin")
+        dump_file = tempfile.NamedTemporaryFile(delete=False)
+        # readback with no-stub and flash-size set
+        try:
+            self.run_esptool(
+                f"--no-stub read_flash -fs detect {offset} 1024 {dump_file.name}"
+            )
+            with open(dump_file.name, "rb") as f:
+                rb = f.read()
+            assert length == len(
+                rb
+            ), f"read_flash length {length} offset {offset:#x} yielded {len(rb)} bytes!"
+        finally:
+            dump_file.close()
+            os.unlink(dump_file.name)
+        # compare files
+        with open("images/one_kb.bin", "rb") as f:
+            ct = f.read()
+        self.diff(rb, ct)
+
 
 class TestFlashDetection(EsptoolTestCase):
     @pytest.mark.quick_test
@@ -840,9 +869,6 @@ class TestExternalFlash(EsptoolTestCase):
         self.verify_readback(0, 1024, "images/one_kb.bin", spi_connection=self.conn)
 
 
-@pytest.mark.skipif(
-    os.name == "nt", reason="Temporarily disabled on windows"
-)  # TODO: ESPTOOL-673
 class TestStubReuse(EsptoolTestCase):
     def test_stub_reuse_with_synchronization(self):
         """Keep the flasher stub running and reuse it the next time."""
@@ -983,9 +1009,7 @@ class TestKeepImageSettings(EsptoolTestCase):
     def setup_class(self):
         super(TestKeepImageSettings, self).setup_class()
         self.BL_IMAGE = f"images/bootloader_{arg_chip}.bin"
-        self.flash_offset = (
-            0x1000 if arg_chip in ("esp32", "esp32s2") else 0
-        )  # bootloader offset
+        self.flash_offset = esptool.CHIP_DEFS[arg_chip].BOOTLOADER_FLASH_OFFSET
         with open(self.BL_IMAGE, "rb") as f:
             self.header = f.read(8)
 
@@ -1056,7 +1080,7 @@ class TestKeepImageSettings(EsptoolTestCase):
 
 
 @pytest.mark.skipif(
-    arg_chip in ["esp32s2", "esp32s3"],
+    arg_chip in ["esp32s2", "esp32s3", "esp32p4"],
     reason="Not supported on targets with USB-CDC.",
 )
 class TestLoadRAM(EsptoolTestCase):
@@ -1140,7 +1164,7 @@ class TestBootloaderHeaderRewriteCases(EsptoolTestCase):
     )
     @pytest.mark.quick_test
     def test_flash_header_rewrite(self):
-        bl_offset = 0x1000 if arg_chip in ("esp32", "esp32s2") else 0
+        bl_offset = esptool.CHIP_DEFS[arg_chip].BOOTLOADER_FLASH_OFFSET
         bl_image = f"images/bootloader_{arg_chip}.bin"
 
         output = self.run_esptool(
@@ -1158,7 +1182,7 @@ class TestBootloaderHeaderRewriteCases(EsptoolTestCase):
     def test_flash_header_no_magic_no_rewrite(self):
         # first image doesn't start with magic byte, second image does
         # but neither are valid bootloader binary images for either chip
-        bl_offset = 0x1000 if arg_chip in ("esp32", "esp32s2") else 0
+        bl_offset = esptool.CHIP_DEFS[arg_chip].BOOTLOADER_FLASH_OFFSET
         for image in ["images/one_kb.bin", "images/one_kb_all_ef.bin"]:
             output = self.run_esptool(
                 f"write_flash -fm dout -ff 20m {bl_offset:#x} {image}"
@@ -1337,10 +1361,7 @@ class TestMakeImage(EsptoolTestCase):
                 f"WARNING: Expected length {len(ct)} doesn't match comparison {len(rb)}"
             )
         print(f"Readback {len(rb)} bytes")
-        for rb_b, ct_b, offs in zip(rb, ct, range(len(rb))):
-            assert (
-                rb_b == ct_b
-            ), f"First difference at offset {offs:#x} Expected {ct_b} got {rb_b}"
+        self.diff(rb, ct)
 
     def test_make_image(self):
         output = self.run_esptool(

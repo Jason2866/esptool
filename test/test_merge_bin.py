@@ -263,6 +263,16 @@ class TestMergeBin:
         # verify the file itself
         assert source == merged_bin[0x1000:]
 
+    def test_hex_header_raw_file(self):
+        # use raw binary file starting with colon
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(b":")
+        try:
+            merged = self.run_merge_bin("esp32", [(0x0, f.name)])
+            assert merged == b":"
+        finally:
+            os.unlink(f.name)
+
 
 class UF2Block(object):
     def __init__(self, bs):
@@ -320,7 +330,7 @@ class TestUF2:
     def generate_binary(self, size):
         with tempfile.NamedTemporaryFile(delete=False) as f:
             for _ in range(size):
-                f.write(struct.pack("B", random.randrange(0, 1 << 8)))
+                f.write(struct.pack("B", random.randrange(0, 1 << 7)))
             return f.name
 
     @staticmethod

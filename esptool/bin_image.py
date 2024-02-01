@@ -13,7 +13,7 @@ import struct
 import tempfile
 from typing import BinaryIO, Optional
 
-from intelhex import IntelHex
+from intelhex import HexRecordError, IntelHex
 
 from .loader import ESPLoader
 from .targets import (
@@ -47,14 +47,18 @@ def intel_hex_to_bin(file: BinaryIO, start_addr: Optional[int] = None) -> Binary
     INTEL_HEX_MAGIC = b":"
     magic = file.read(1)
     file.seek(0)
-    if magic == INTEL_HEX_MAGIC:
-        ih = IntelHex()
-        ih.loadhex(file.name)
-        file.close()
-        bin = tempfile.NamedTemporaryFile(suffix=".bin", delete=False)
-        ih.tobinfile(bin, start=start_addr)
-        return bin
-    else:
+    try:
+        if magic == INTEL_HEX_MAGIC:
+            ih = IntelHex()
+            ih.loadhex(file.name)
+            file.close()
+            bin = tempfile.NamedTemporaryFile(suffix=".bin", delete=False)
+            ih.tobinfile(bin, start=start_addr)
+            return bin
+        else:
+            return file
+    except HexRecordError:
+        # file started with HEX magic but the rest was not according to the standard
         return file
 
 
@@ -738,15 +742,23 @@ class ESP32FirmwareImage(BaseFirmwareImage):
                 flash_segments.reverse()
                 for segment in flash_segments:
                     pad_len = get_alignment_data_needed(segment)
-                    while pad_len > 0:
-                        pad_segment = ImageSegment(0, b"\x00" * pad_len, f.tell())
-                        self.save_segment(f, pad_segment)
-                        total_segments += 1
-                        pad_len = get_alignment_data_needed(segment)
-                    # write the flash segment
-                    assert (
-                        f.tell() + 8
-                    ) % self.IROM_ALIGN == segment.addr % self.IROM_ALIGN
+                    # Some chips have a non-zero load offset (eg. 0x1000)
+                    # therefore we shift the ROM segments "-load_offset"
+                    # so it will be aligned properly after it is flashed
+                    align_min = (
+                        self.ROM_LOADER.BOOTLOADER_FLASH_OFFSET - self.SEG_HEADER_LEN
+                    )
+                    if pad_len < align_min:
+                        print("Unable to align the segment!")
+                        break
+                    pad_len -= self.ROM_LOADER.BOOTLOADER_FLASH_OFFSET
+                    pad_segment = ImageSegment(0, b"\x00" * pad_len, f.tell())
+                    self.save_segment(f, pad_segment)
+                    total_segments += 1
+                    # check the alignment
+                    assert (f.tell() + 8 + self.ROM_LOADER.BOOTLOADER_FLASH_OFFSET) % (
+                        self.IROM_ALIGN
+                    ) == segment.addr % self.IROM_ALIGN
                     # save the flash segment but not saving its checksum neither
                     # saving the number of flash segments, since ROM bootloader
                     # should "not see" them
@@ -1240,7 +1252,7 @@ class ELFFile(object):
         nobits_secitons = [s for s in all_sections if s[1] == ELFFile.SEC_TYPE_NOBITS]
 
         # search for the string table section
-        if not (shstrndx * self.LEN_SEC_HEADER) in section_header_offsets:
+        if (shstrndx * self.LEN_SEC_HEADER) not in section_header_offsets:
             raise FatalError("ELF file has no STRTAB section at shstrndx %d" % shstrndx)
         _, sec_type, _, sec_size, sec_offs = read_section_header(
             shstrndx * self.LEN_SEC_HEADER
