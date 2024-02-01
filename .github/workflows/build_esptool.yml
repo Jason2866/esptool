@@ -100,3 +100,28 @@ jobs:
       - uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: Stubs updated
+
+  release:
+      name: Upload release binaries
+      needs: build-esptool-binaries
+      runs-on: ubuntu-latest
+      strategy:
+        matrix:
+          TARGET: [macos-14, macos-latest, ubuntu-latest, windows-latest]
+      steps:
+        - name: Download built binaries
+          uses: actions/download-artifact@master
+        - name: Rename and package binaries
+          run: |
+            mv esptool-${{ matrix.TARGET }} ${{ env.DISTPATH }}
+            zip -r ${{ env.DISTPATH }}.zip ./${{ env.DISTPATH }}/*
+        - name: Release
+          uses: jason2866/action-gh-release@v1.3
+          with:
+            tag_name: ${{ github.run_number }}
+            body_path: "${{ env.DISTPATH }}.zip"
+            prerelease: true
+            files: |
+              "${{ env.DISTPATH }}.zip"
+          env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
