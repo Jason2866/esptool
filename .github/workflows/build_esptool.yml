@@ -107,7 +107,7 @@ jobs:
       runs-on: ubuntu-latest
       strategy:
         matrix:
-          TARGET: [macos-14, macos-latest, ubuntu-latest, windows-latest]
+          TARGET: [macos-arm, macos, linux-amd64, win64]
       steps:
         - name: Download built binaries
           uses: actions/download-artifact@master
@@ -119,9 +119,9 @@ jobs:
           uses: jason2866/action-gh-release@v1.3
           with:
             tag_name: ${{ github.run_number }}
-            body_path: "${{ env.DISTPATH }}.zip"
+            body_path: ${{ env.DISTPATH }}.zip
             prerelease: true
             files: |
-              "${{ env.DISTPATH }}.zip"
+              ${{ env.DISTPATH }}.zip
           env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
