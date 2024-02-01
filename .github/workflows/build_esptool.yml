@@ -17,9 +17,6 @@ jobs:
         - os: macos-latest
           TARGET: macos
           SEPARATOR: ':'
-        - os: macos-14
-          TARGET: macos-arm
-          SEPARATOR: ':'
         - os: ubuntu-latest
           TARGET: linux-amd64
           SEPARATOR: ':'
