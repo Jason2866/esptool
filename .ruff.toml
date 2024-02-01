@@ -3,7 +3,8 @@
 exclude = [
     ".eggs",
     ".git",
-    "__pycache__"
+    "__pycache__",
+    "vendor"
 ]
 
 line-length = 88
