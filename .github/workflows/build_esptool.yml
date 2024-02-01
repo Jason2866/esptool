@@ -89,6 +89,6 @@ jobs:
           cp -R ./mv_stubs/*.json ./esptool/targets/stub_flasher
           ls -R ./esptool/targets/stub_flasher
           rm -rf ./mv_stubs
-      - uses: stefanzweifel/git-auto-commit-action@v4
+      - uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: Stubs updated
