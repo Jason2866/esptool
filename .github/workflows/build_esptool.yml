@@ -12,8 +12,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        os: [macos-14, macos-latest, ubuntu-latest, windows-latest]
         include:
+        - os: macos-14
+          TARGET: macos-arm
+          SEPARATOR: ':'
         - os: macos-latest
           TARGET: macos
           SEPARATOR: ':'
@@ -32,10 +35,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@master
-      - name: Set up Python 3.8
+      - name: Set up Python 3.11
         uses: actions/setup-python@master
         with:
-          python-version: 3.8
+          python-version: 3.11
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -47,6 +50,11 @@ jobs:
           pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico --add-data="${{ env.EFUSE_DIR }}*.yaml${{ matrix.SEPARATOR }}${{ env.EFUSE_DIR }}" espefuse.py
           pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico espsecure.py
           pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico esp_rfc2217_server.py
+      - name: Archive artifact
+        uses: actions/upload-artifact@master
+        with:
+          name: ${{ env.DISTPATH }}
+          path: ${{ env.DISTPATH }}
       - name: Build stub
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -92,3 +100,26 @@ jobs:
       - uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: Stubs updated
+
+  release:
+      name: Upload release binaries
+      needs: build-esptool-binaries
+      runs-on: ubuntu-latest
+      strategy:
+        matrix:
+          TARGET: [macos-arm, macos, linux-amd64, win64]
+      steps:
+        - name: Download built binaries
+          uses: actions/download-artifact@master
+        - name: Rename and package binaries
+          run: |
+            zip -r esptool-${{ matrix.TARGET }}.zip ./esptool-${{ matrix.TARGET }}
+        - name: Release
+          uses: jason2866/action-gh-release@v1.3
+          with:
+            tag_name: ${{ github.run_number }}
+            prerelease: true
+            files: |
+              *.zip
+          env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
