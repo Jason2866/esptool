@@ -113,15 +113,13 @@ jobs:
           uses: actions/download-artifact@master
         - name: Rename and package binaries
           run: |
-            mv esptool-${{ matrix.TARGET }} ${{ env.DISTPATH }}
-            zip -r ${{ env.DISTPATH }}.zip ./${{ env.DISTPATH }}/*
+            zip -r esptool-${{ matrix.TARGET }}.zip ./esptool-${{ matrix.TARGET }}
         - name: Release
           uses: jason2866/action-gh-release@v1.3
           with:
             tag_name: ${{ github.run_number }}
-            body_path: ${{ env.DISTPATH }}.zip
             prerelease: true
             files: |
-              ${{ env.DISTPATH }}.zip
+              *.zip
           env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
