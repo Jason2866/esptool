@@ -815,9 +815,11 @@ def image_info(args):
         print(
             "Checksum: {:#02x} ({})".format(
                 image.checksum,
-                "valid"
-                if image.checksum == calc_checksum
-                else "invalid - calculated {:02x}".format(calc_checksum),
+                (
+                    "valid"
+                    if image.checksum == calc_checksum
+                    else "invalid - calculated {:02x}".format(calc_checksum)
+                ),
             )
         )
         try:
@@ -892,8 +894,9 @@ def image_info(args):
             ESP8266V2FirmwareImage.IMAGE_V2_MAGIC,
         ]:
             raise FatalError(
-                "This is not a valid image "
-                "(invalid magic number: {:#x})".format(magic)
+                "This is not a valid image " "(invalid magic number: {:#x})".format(
+                    magic
+                )
             )
 
         if args.chip == "auto":
@@ -940,9 +943,11 @@ def image_info(args):
     print(
         "Checksum: {:02x} ({})".format(
             image.checksum,
-            "valid"
-            if image.checksum == calc_checksum
-            else "invalid - calculated {:02x}".format(calc_checksum),
+            (
+                "valid"
+                if image.checksum == calc_checksum
+                else "invalid - calculated {:02x}".format(calc_checksum)
+            ),
         )
     )
     try:
