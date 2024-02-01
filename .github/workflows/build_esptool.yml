@@ -105,15 +105,15 @@ jobs:
       name: Upload release binaries
       needs: build-esptool-binaries
       runs-on: ubuntu-latest
-      strategy:
-        matrix:
-          TARGET: [macos-arm, macos, linux-amd64, win64]
       steps:
         - name: Download built binaries
           uses: actions/download-artifact@master
         - name: Rename and package binaries
           run: |
-            zip -r esptool-${{ matrix.TARGET }}.zip ./esptool-${{ matrix.TARGET }}
+            zip -r esptool-macos-arm.zip ./esptool-macos-arm
+            zip -r esptool-macos.zip ./esptool-macos
+            zip -r esptool-linux-amd64.zip ./esptool-linux-amd64
+            zip -r esptool-win64.zip ./esptool-win64
         - name: Release
           uses: jason2866/action-gh-release@v1.3
           with:
