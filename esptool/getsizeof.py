@@ -2,6 +2,7 @@
 # Code from http://code.activestate.com/recipes/577504/
 # Created by Raymond Hettinger on Fri, 17 Dec 2010 (MIT)
 
+# ruff: noqa
 import sys
 from itertools import chain
 from collections import deque
