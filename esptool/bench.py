@@ -31,8 +31,8 @@ import gc
 import sys
 import time
 
-import intelhex
-from intelhex.compat import StringIO, range_g
+import esptool.intelhex
+from esptool.compat import StringIO, range_g
 
 def median(values):
     """Return median value for the list of values.
