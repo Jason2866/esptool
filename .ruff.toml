@@ -15,7 +15,9 @@ ignore = ["E203"]
 target-version = "py37"
 
 [per-file-ignores]
-
+"esptool/getsizeof.py"
+"esptool/compat.py"
+"esptool/intelhex.py"
 
 # tests often manipulate sys.path before importing the main tools, so ignore import order violations
 "test/*.py" = ["E402"]
