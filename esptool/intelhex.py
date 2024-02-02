@@ -41,7 +41,7 @@ from bisect import bisect_right
 import os
 import sys
 
-from esptool.intelhex.compat import (
+from esptool.compat import (
     IntTypes,
     StrType,
     StringIO,
@@ -55,7 +55,7 @@ from esptool.intelhex.compat import (
     range_l,
     )
 
-from esptool.intelhex.getsizeof import total_size
+from esptool.getsizeof import total_size
 
 
 class _DeprecatedParam(object):
