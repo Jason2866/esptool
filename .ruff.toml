@@ -8,8 +8,8 @@ exclude = [
 
 line-length = 88
 
-lint.select = ['E', 'F', 'W']
-lint.ignore = ["E203"]
+select = ['E', 'F', 'W']
+ignore = ["E203"]
 
 # Assume Python 3.7
 target-version = "py37"
