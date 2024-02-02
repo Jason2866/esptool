@@ -50,6 +50,13 @@ jobs:
           pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico --add-data="${{ env.EFUSE_DIR }}*.yaml${{ matrix.SEPARATOR }}${{ env.EFUSE_DIR }}" espefuse.py
           pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico espsecure.py
           pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico esp_rfc2217_server.py
+      - name: Test binaries
+        shell: bash
+        run: |
+          ./${{ env.DISTPATH }}/esptool${{ matrix.EXTEN }} -h
+          ./${{ env.DISTPATH }}/espefuse${{ matrix.EXTEN }} -h
+          ./${{ env.DISTPATH }}/espsecure${{ matrix.EXTEN }} -h
+          ./${{ env.DISTPATH }}/esp_rfc2217_server${{ matrix.EXTEN }} -h
       - name: Archive artifact
         uses: actions/upload-artifact@master
         with:
