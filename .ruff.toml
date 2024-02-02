@@ -8,8 +8,8 @@ exclude = [
 
 line-length = 88
 
-lint.select = ['E', 'F', 'W']
-lint.ignore = ["E203"]
+select = ['E', 'F', 'W']
+ignore = ["E203"]
 
 # Assume Python 3.7
 target-version = "py37"
@@ -21,7 +21,6 @@ target-version = "py37"
 
 # tests often manipulate sys.path before importing the main tools, so ignore import order violations
 "test/*.py" = ["E402"]
-"esptool/bin_image.py" = ["E402"]
 
 # multiple spaces after ',' and long lines - used for visual layout of eFuse data
 "espefuse/efuse/*/mem_definition.py" =  ["E241", "E501"]
