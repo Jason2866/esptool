@@ -33,6 +33,7 @@
 
 '''Intel HEX format manipulation library.'''
 
+# ruff: noqa
 __docformat__ = "javadoc"
 
 from array import array
