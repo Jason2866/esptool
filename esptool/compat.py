@@ -38,6 +38,7 @@
 @author     Alexander Belchenko (alexander belchenko AT gmail com)
 '''
 
+# ruff: noqa
 __docformat__ = "javadoc"
 
 
