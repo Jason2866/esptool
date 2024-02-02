@@ -7,8 +7,8 @@ import binascii
 import copy
 import hashlib
 import io
+import os
 import re
-import sys
 import struct
 import tempfile
 from typing import BinaryIO, Optional
