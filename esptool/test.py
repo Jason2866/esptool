@@ -41,8 +41,8 @@ import sys
 import tempfile
 import unittest
 
-import intelhex
-from intelhex import (
+import esptool.intelhex
+from esptool.intelhex import (
     IntelHex,
     IntelHexError,
     HexReaderError,
@@ -63,8 +63,8 @@ from intelhex import (
     hex2bin,
     Record,
     )
-from intelhex import compat
-from intelhex.compat import (
+from esptool.intelhex import compat
+from esptool.intelhex.compat import (
     BytesIO,
     StringIO,
     UnicodeType,
@@ -75,7 +75,7 @@ from intelhex.compat import (
     range_g,
     range_l,
     )
-from intelhex.__version__ import version_str
+from esptool.intelhex.__version__ import version_str
 
 __docformat__ = 'restructuredtext'
 
