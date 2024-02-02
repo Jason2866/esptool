@@ -7,19 +7,11 @@ import binascii
 import copy
 import hashlib
 import io
-import os
 import re
 import sys
 import struct
 import tempfile
 from typing import BinaryIO, Optional
-
-# Add vendor directory to module search path
-# embed the module "intelhex"
-parent_dir = os.path.abspath(os.path.dirname(__file__))
-vendor_dir = os.path.join(parent_dir, 'vendor')
-
-sys.path.append(vendor_dir)
 
 from intelhex import HexRecordError, IntelHex
 
