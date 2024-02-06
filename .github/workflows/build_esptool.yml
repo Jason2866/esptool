@@ -27,6 +27,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@master
+        with:
+          fetch-depth: 0
       - name: Set up multiarch/qemu-user-static
         run: docker run --rm --privileged multiarch/qemu-user-static:register --reset
       - name: Install container arm64
@@ -39,7 +41,7 @@ jobs:
         # PyInstaller >=6.0 results in significantly more antivirus false positives
         run: |
           sudo apt update
-          git config --global --add safe.directory /github/workspace
+          #git config --global --add safe.directory /github/workspace
           cd /github/workspace
           python -m pip install --upgrade pip
           pip install pyinstaller==5.13.2
