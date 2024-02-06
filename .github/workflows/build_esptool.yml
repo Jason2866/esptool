@@ -12,7 +12,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macos-14, macos-latest, ubuntu-latest, windows-latest]
+        os: [macos-14, macos-latest, ubuntu-latest, windows-latest, ARM, ARM64]
         include:
         - os: macos-14
           TARGET: macos-arm
