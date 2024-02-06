@@ -42,9 +42,9 @@ jobs:
               "ln -snf /usr/share/zoneinfo/Europe/Berlin /etc/localtime && echo Europe/Berlin > /etc/timezone &&
               apt update &&
               apt install software-properties-common make build-essential git libarchive-tools -y &&
-              add-apt-repository ppa:deadsnakes/ppa &&
-              apt update &&
-              apt install python3.9 -y &&
+              #add-apt-repository ppa:deadsnakes/ppa &&
+              #apt update &&
+              #apt install python3.9 -y &&
               apt install python3-pip -y &&
               git config --global --add safe.directory /github/workspace &&
               cd /github/workspace &&
