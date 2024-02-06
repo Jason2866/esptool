@@ -35,14 +35,13 @@ jobs:
         if: ${{matrix.os == 'arm64'}}
         uses: docker://multiarch/ubuntu-core:arm64-bionic
       - name: Install container armv7l
-        if: ${{matrix.os == 'armv7l'}}
         uses: docker://multiarch/ubuntu-core:armhf-bionic
         with:
             args: >
               bash -c
               "apt update &&
               git config --global --add safe.directory /github/workspace &&
-              #cd /github/workspace &&
+              cd /github/workspace &&
               python -m pip install --upgrade pip &&
               pip install pyinstaller==5.13.2 &&
               pip install --user -e . &&
@@ -53,6 +52,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           USE_HARD_LINKS: false
+        if: ${{matrix.os == 'armv7l'}}
       - name: Archive artifact
         uses: actions/upload-artifact@master
         with:
