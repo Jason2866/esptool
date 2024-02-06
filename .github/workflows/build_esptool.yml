@@ -44,7 +44,7 @@ jobs:
               git config --global --add safe.directory /github/workspace &&
               cd /github/workspace &&
               pip3 install pyinstaller &&
-              pip install --user -e . &&
+              pip3 install --user -e . &&
               pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico --add-data="${{ env.STUBS_DIR }}*.json${{ matrix.SEPARATOR }}${{ env.STUBS_DIR }}" esptool.py &&
               pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico --add-data="${{ env.EFUSE_DIR }}*.yaml${{ matrix.SEPARATOR }}${{ env.EFUSE_DIR }}" espefuse.py &&
               pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico espsecure.py &&
