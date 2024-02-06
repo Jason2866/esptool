@@ -28,11 +28,11 @@ jobs:
           EXTEN: .exe
           SEPARATOR: ';'
         - os: ARM
-          CONTAINER: python:3.8-bullseye
+          CONTAINER: 3.8-bullseye
           TARGET: linux-arm
           SEPARATOR: ':'
         - os: ARM64
-          CONTAINER: python:3.8-bullseye
+          CONTAINER: 3.8-bullseye
           TARGET: linux-arm64
           SEPARATOR: ':'
     container: ${{ matrix.CONTAINER }} # use python container on ARM
