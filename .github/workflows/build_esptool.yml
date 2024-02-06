@@ -40,7 +40,7 @@ jobs:
             args: >
               bash -c
               "apt update &&
-              apt install software-properties-common make build-essential git libarchive-tools -y &&
+              apt install tzdata software-properties-common make build-essential git libarchive-tools -y &&
               add-apt-repository ppa:deadsnakes/ppa &&
               apt update &&
               apt install python3.9 -y &&
