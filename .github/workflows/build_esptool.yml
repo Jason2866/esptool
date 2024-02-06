@@ -3,30 +3,22 @@ name: Build esptool
 on:
   workflow_dispatch:
   push:
-    paths-ignore:
-    - '.github/**' # Ignore changes towards the .github directory
 
 jobs:
   build-esptool-binaries:
     name: Build esptool binaries for ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        os: [macos-14, macos-latest, ubuntu-latest, windows-latest]
+        os: [arm64, armv7l]
         include:
-        - os: macos-14
-          TARGET: macos-arm
+        - os: arm64
+          TARGET: linux-arm64
           SEPARATOR: ':'
-        - os: macos-latest
-          TARGET: macos
+        - os: armv7l
+          TARGET: linux-arm
           SEPARATOR: ':'
-        - os: ubuntu-latest
-          TARGET: linux-amd64
-          SEPARATOR: ':'
-        - os: windows-latest
-          TARGET: win64
-          EXTEN: .exe
-          SEPARATOR: ';'
+
     env:
       DISTPATH: esptool-${{ matrix.TARGET }}
       STUBS_DIR: ./esptool/targets/stub_flasher/
@@ -39,6 +31,14 @@ jobs:
         uses: actions/setup-python@master
         with:
           python-version: 3.11
+      - name: Set up multiarch/qemu-user-static
+        run: docker run --rm --privileged multiarch/qemu-user-static:register --reset
+      - name: Install container arm64
+        if: ${{matrix.os == 'arm64'}}
+        uses: docker://multiarch/ubuntu-core:arm64-bionic
+      - name: Install container armv7l
+        if: ${{matrix.os == 'armv7l'}}
+        uses: docker://multiarch/ubuntu-core:armhf-bionic
       - name: Install dependencies
         # PyInstaller >=6.0 results in significantly more antivirus false positives
         run: |
