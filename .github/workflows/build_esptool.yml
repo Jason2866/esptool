@@ -33,9 +33,9 @@ jobs:
         run: docker run --rm --privileged multiarch/qemu-user-static:register --reset
       - name: Install container arm64
         if: ${{matrix.os == 'arm64'}}
-        uses: docker://multiarch/ubuntu-core:arm64-jammy
+        uses: docker://multiarch/ubuntu-core:arm64-focal
       - name: Install container armv7l
-        uses: docker://multiarch/ubuntu-core:armhf-jammy
+        uses: docker://multiarch/ubuntu-core:armhf-focal
         with:
             args: >
               bash -c
