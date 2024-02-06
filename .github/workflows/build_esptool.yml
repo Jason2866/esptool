@@ -27,10 +27,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@master
-      - name: Set up Python 3.11
-        uses: actions/setup-python@master
-        with:
-          python-version: 3.11
       - name: Set up multiarch/qemu-user-static
         run: docker run --rm --privileged multiarch/qemu-user-static:register --reset
       - name: Install container arm64
@@ -64,7 +60,7 @@ jobs:
           name: ${{ env.DISTPATH }}
           path: ${{ env.DISTPATH }}
       - name: Build stub
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'arm64'
         run: |
           export TOOLCHAIN_DIR=$HOME/toolchain
           export ESP8266_BINDIR=$TOOLCHAIN_DIR/xtensa-lx106-elf/bin
@@ -76,7 +72,7 @@ jobs:
           ./ci/setup_ci_build_env.sh
           make -C flasher_stub V=1
       - name: Archive stubs artifact
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'arm64'
         uses: actions/upload-artifact@master
         with:
           name: stubs
@@ -118,10 +114,8 @@ jobs:
           uses: actions/download-artifact@master
         - name: Rename and package binaries
           run: |
-            zip -r esptool-macos-arm.zip ./esptool-macos-arm
-            zip -r esptool-macos.zip ./esptool-macos
-            zip -r esptool-linux-amd64.zip ./esptool-linux-amd64
-            zip -r esptool-win64.zip ./esptool-win64
+            zip -r esptool-linux-arm.zip ./esptool-linux-arm
+            zip -r esptool-linux-arm64.zip ./esptool-linux-arm64
         - name: Release
           uses: jason2866/action-gh-release@v1.3
           with:
