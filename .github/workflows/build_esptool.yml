@@ -39,7 +39,7 @@ jobs:
         # PyInstaller >=6.0 results in significantly more antivirus false positives
         run: |
           sudo apt update
-          sudo apt install make build-essential git wget curl libssl-dev libncurses-dev flex bison gperf python-pip
+          sudo apt install make build-essential git wget curl libssl-dev libncurses-dev flex bison gperf
           git config --global --add safe.directory /github/workspace
           #cd /github/workspace
           python -m pip install --upgrade pip
