@@ -40,6 +40,7 @@ jobs:
             args: >
               bash -c
               "apt update &&
+              apt install make build-essential git libarchive-tools &&
               git config --global --add safe.directory /github/workspace &&
               cd /github/workspace &&
               python -m pip install --upgrade pip &&
