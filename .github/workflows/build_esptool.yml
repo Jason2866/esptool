@@ -7,7 +7,7 @@ on:
 jobs:
   build-esptool-binaries:
     name: Build esptool binaries for ${{ matrix.os }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
         os: [arm64, armv7l]
