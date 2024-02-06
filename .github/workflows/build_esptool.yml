@@ -40,22 +40,20 @@ jobs:
         with:
             args: >
               bash -c
-              sudo apt update
-              git config --global --add safe.directory /github/workspace
-              #cd /github/workspace
-              python -m pip install --upgrade pip
-              pip install pyinstaller==5.13.2
-              pip install --user -e .
-
-              pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico --add-data="${{ env.STUBS_DIR }}*.json${{ matrix.SEPARATOR }}${{ env.STUBS_DIR }}" esptool.py
-              pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico --add-data="${{ env.EFUSE_DIR }}*.yaml${{ matrix.SEPARATOR }}${{ env.EFUSE_DIR }}" espefuse.py
-              pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico espsecure.py
-              pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico esp_rfc2217_server.py
-
-              ./${{ env.DISTPATH }}/esptool${{ matrix.EXTEN }} -h
-              ./${{ env.DISTPATH }}/espefuse${{ matrix.EXTEN }} -h
-              ./${{ env.DISTPATH }}/espsecure${{ matrix.EXTEN }} -h
-              ./${{ env.DISTPATH }}/esp_rfc2217_server${{ matrix.EXTEN }} -h
+              "apt update &&
+              git config --global --add safe.directory /github/workspace &&
+              #cd /github/workspace &&
+              python -m pip install --upgrade pip &&
+              pip install pyinstaller==5.13.2 &&
+              pip install --user -e . &&
+              pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico --add-data="${{ env.STUBS_DIR }}*.json${{ matrix.SEPARATOR }}${{ env.STUBS_DIR }}" esptool.py &&
+              pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico --add-data="${{ env.EFUSE_DIR }}*.yaml${{ matrix.SEPARATOR }}${{ env.EFUSE_DIR }}" espefuse.py &&
+              pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico espsecure.py &&
+              pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico esp_rfc2217_server.py &&
+              ./${{ env.DISTPATH }}/esptool${{ matrix.EXTEN }} -h &&
+              ./${{ env.DISTPATH }}/espefuse${{ matrix.EXTEN }} -h &&
+              ./${{ env.DISTPATH }}/espsecure${{ matrix.EXTEN }} -h &&
+              ./${{ env.DISTPATH }}/esp_rfc2217_server${{ matrix.EXTEN }} -h"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           USE_HARD_LINKS: false
