@@ -38,6 +38,9 @@ jobs:
       - name: Install dependencies
         # PyInstaller >=6.0 results in significantly more antivirus false positives
         run: |
+          apt update
+          apt install make build-essential git ruby libarchive-tools rpm libsecret-1-dev
+          git config --global --add safe.directory /github/workspace
           cd /github/workspace
           python -m pip install --upgrade pip
           pip install pyinstaller==5.13.2
