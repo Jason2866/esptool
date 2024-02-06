@@ -39,8 +39,7 @@ jobs:
         with:
             args: >
               bash -c
-              "ENV TZ=Europe/Berlin &&
-              ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone &&
+              "ln -snf /usr/share/zoneinfo/Europe/Berlin /etc/localtime && echo Europe/Berlin > /etc/timezone &&
               apt update &&
               apt install software-properties-common make build-essential git libarchive-tools -y &&
               add-apt-repository ppa:deadsnakes/ppa &&
