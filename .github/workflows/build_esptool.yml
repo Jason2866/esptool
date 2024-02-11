@@ -3,6 +3,8 @@ name: Build esptool
 on:
   workflow_dispatch:
   push:
+    tags:
+      - "v*.*.*"
     paths-ignore:
     - '.github/**' # Ignore changes towards the .github directory
 
@@ -124,8 +126,8 @@ jobs:
             zip -r esptool-win64.zip ./esptool-win64
         - name: Release
           uses: jason2866/action-gh-release@v1.3
+          if: startsWith(github.ref, 'refs/tags/')
           with:
-            tag_name: ${{ github.run_number }}
             prerelease: true
             files: |
               *.zip
