@@ -108,6 +108,7 @@ setup(
     setup_requires=(["wheel"] if "bdist_wheel" in sys.argv else []),
     extras_require={
         "dev": [
+            "ruff>=0.1.14",
             "pyelftools",
             "coverage~=6.0",
             "pre-commit",
@@ -127,7 +128,6 @@ setup(
         "pyserial>=3.3",
         "reedsolo>=1.5.3,<1.8",
         "PyYAML>=5.1",
-        "intelhex",
     ],
     packages=find_packages(),
     include_package_data=True,
