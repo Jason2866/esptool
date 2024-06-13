@@ -34,19 +34,32 @@ class ResetStrategy(object):
         self.reset_delay = reset_delay
 
     def __call__(self):
-        try:
-            self.reset()
-        except OSError as e:
-            # ENOTTY for TIOCMSET; EINVAL for TIOCMGET
-            if e.errno in [errno.ENOTTY, errno.EINVAL]:
-                self.print_once(
-                    "WARNING: Chip was NOT reset. Setting RTS/DTR lines is not "
-                    f"supported for port '{self.port.name}'. Set --before and --after "
-                    "arguments to 'no_reset' and switch to bootloader manually to "
-                    "avoid this warning."
-                )
-            else:
-                raise
+        """
+        On targets with USB modes, the reset process can cause the port to
+        disconnect / reconnect during reset.
+        This will retry reconnections on ports that
+        drop out during the reset sequence.
+        """
+        for retry in reversed(range(3)):
+            try:
+                if not self.port.isOpen():
+                    self.port.open()
+                self.reset()
+                break
+            except OSError as e:
+                # ENOTTY for TIOCMSET; EINVAL for TIOCMGET
+                if e.errno in [errno.ENOTTY, errno.EINVAL]:
+                    self.print_once(
+                        "WARNING: Chip was NOT reset. Setting RTS/DTR lines is not "
+                        f"supported for port '{self.port.name}'. Set --before and --after "
+                        "arguments to 'no_reset' and switch to bootloader manually to "
+                        "avoid this warning."
+                    )
+                    break
+                elif not retry:
+                    raise
+                self.port.close()
+                time.sleep(0.5)
 
     def reset(self):
         pass
