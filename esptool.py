@@ -1910,6 +1910,11 @@ class ESP32S2ROM(ESP32ROM):
         [0x50000000, 0x50002000, "RTC_DATA"],
     ]
 
+    EFUSE_VDD_SPI_REG = EFUSE_BASE + 0x34
+    VDD_SPI_XPD = 1 << 4
+    VDD_SPI_TIEH = 1 << 5
+    VDD_SPI_FORCE = 1 << 6
+
     UF2_FAMILY_ID = 0xBFDD4EEE
 
     def get_pkg_version(self):
