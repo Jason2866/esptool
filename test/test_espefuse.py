@@ -73,6 +73,7 @@ class EfuseTestCase:
                 f"{sys.executable} -m espefuse --chip {arg_chip} "
                 f"--virt --path-efuse-file {self.efuse_file.name} -d"
             )
+            self._set_target_wafer_version()
         else:
             self.base_cmd = (
                 f"{sys.executable} -m espefuse --chip {arg_chip} "
@@ -116,6 +117,11 @@ class EfuseTestCase:
 
     def _set_none_recovery_coding_scheme(self):
         self.espefuse_py("burn_efuse CODING_SCHEME 3")
+
+    def _set_target_wafer_version(self):
+        # ESP32 has to be ECO3 (v3.0) for tests
+        if arg_chip == "esp32":
+            self.espefuse_py("burn_efuse CHIP_VER_REV1 1 CHIP_VER_REV2 1")
 
     def check_data_block_in_log(
         self, log, file_path, repeat=1, reverse_order=False, offset=0
@@ -176,6 +182,18 @@ class TestReadCommands(EfuseTestCase):
     def test_dump(self):
         self.espefuse_py("dump -h")
         self.espefuse_py("dump")
+
+    def test_dump_format_united(self):
+        tmp_file = tempfile.NamedTemporaryFile(delete=False)
+        self.espefuse_py(f"dump --format united --file_name {tmp_file.name}")
+
+    def test_dump_separated_default(self):
+        tmp_file = tempfile.NamedTemporaryFile(delete=False)
+        self.espefuse_py(f"dump --file_name {tmp_file.name}")
+
+    def test_dump_separated(self):
+        tmp_file = tempfile.NamedTemporaryFile(delete=False)
+        self.espefuse_py(f"dump --format separated --file_name {tmp_file.name}")
 
     def test_summary(self):
         self.espefuse_py("summary -h")
@@ -800,6 +818,24 @@ class TestBurnEfuseCommands(EfuseTestCase):
             ADC2_TP_LOW 40 \
             ADC2_TP_HIGH 45"
         )
+
+    @pytest.mark.skipif(
+        arg_chip != "esp32s3",
+        reason="Currently S3 only has this efuse incompatibility check",
+    )
+    def test_burn_efuse_incompatibility_check(self):
+        self.espefuse_py(
+            "burn_efuse DIS_USB_JTAG 1 DIS_USB_SERIAL_JTAG 1",
+            check_msg="Incompatible eFuse settings detected, abort",
+            ret_code=2,
+        )
+        self.espefuse_py("burn_efuse DIS_USB_JTAG 1")
+        self.espefuse_py(
+            "burn_efuse DIS_USB_SERIAL_JTAG 1",
+            check_msg="Incompatible eFuse settings detected, abort",
+            ret_code=2,
+        )
+        self.espefuse_py("burn_efuse DIS_USB_SERIAL_JTAG 1 --force")
 
 
 class TestBurnKeyCommands(EfuseTestCase):
@@ -2065,3 +2101,32 @@ class TestPostponedEfuses(EfuseTestCase):
         assert "Burn postponed efuses from BLOCK0" in output
         assert "BURN BLOCK0  - OK" in output
         assert "Successful" in output
+
+
+class TestCSVEfuseTable(EfuseTestCase):
+    def test_extend_efuse_table_with_csv_file(self):
+        csv_file = f"{IMAGES_DIR}/esp_efuse_custom_table.csv"
+        output = self.espefuse_py(f" --extend-efuse-table {csv_file} summary")
+        assert "MODULE_VERSION (BLOCK3)" in output
+        assert "DEVICE_ROLE (BLOCK3)" in output
+        assert "SETTING_2 (BLOCK3)" in output
+        assert "ID_NUM_0 (BLOCK3)" in output
+        assert "ID_NUM_1 (BLOCK3)" in output
+        assert "ID_NUM_2 (BLOCK3)" in output
+        assert "CUSTOM_SECURE_VERSION (BLOCK3)" in output
+        assert "ID_NUMK_0 (BLOCK3)" in output
+        assert "ID_NUMK_1 (BLOCK3)" in output
+
+        self.espefuse_py(
+            f"--extend-efuse-table {csv_file} burn_efuse \
+                         MODULE_VERSION 1 \
+                         CUSTOM_SECURE_VERSION 4 \
+                         SETTING_1_ALT_NAME 7 \
+                         SETTING_2 1 \
+                         ID_NUM_0 1 \
+                         ID_NUM_1 1 \
+                         ID_NUM_2 1 \
+                         MY_ID_NUMK_0 1 \
+                         MY_ID_NUMK_1 1 \
+                         MY_DATA_FIELD1 1"
+        )
