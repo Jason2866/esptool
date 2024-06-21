@@ -50,6 +50,7 @@
 
 [project.optional-dependencies]
     dev = [
+        "ruff>=0.1.14",
         "pyelftools",
         "coverage~=6.0",
         "pre-commit",
