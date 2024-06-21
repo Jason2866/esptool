@@ -69,7 +69,8 @@ jobs:
         - name: Checkout
           uses: actions/checkout@master
 
-        - name: Run pre-commit hooks
+        - name: Lint and format with ruff
           run: |
             pip install --extra-index-url https://dl.espressif.com/pypi -e .[dev]
-            pre-commit run --all-files
+            python -m ruff check
+            python -m ruff format
