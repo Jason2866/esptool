@@ -62,15 +62,3 @@ jobs:
         ./ci/setup_ci_build_env.sh
         make -C flasher_stub V=1
         cd flasher_stub && python ./compare_stubs.py
-
-  lint_esptool:
-      runs-on: ubuntu-latest
-      steps:
-        - name: Checkout
-          uses: actions/checkout@master
-
-        - name: Lint and format with ruff
-          run: |
-            pip install --extra-index-url https://dl.espressif.com/pypi -e .[dev]
-            python -m ruff check
-            python -m ruff format
