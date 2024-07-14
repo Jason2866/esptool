@@ -414,7 +414,7 @@ class ESPLoader(object):
                 chip_magic_value = detect_port.read_reg(ESPLoader.CHIP_DETECT_MAGIC_REG_ADDR)
 
                 for cls in [ESP8266ROM, ESP32ROM, ESP32S2ROM, ESP32S3ROM,
-                            ESP32C3ROM, ESP32C6ROM, ESP32C2ROM, ESP32H2ROM]:
+                            ESP32C3ROM, ESP32C6ROM, ESP32C2ROM, ESP32H2ROM, ESP32P4ROM]:
                     if chip_magic_value in cls.CHIP_DETECT_MAGIC_VALUE:
                         inst = cls(detect_port._port, baud, trace_enabled=trace_enabled)
                         inst._post_connect()
@@ -703,7 +703,7 @@ class ESPLoader(object):
                 if chip_magic_value not in self.CHIP_DETECT_MAGIC_VALUE:
                     actually = None
                     for cls in [ESP8266ROM, ESP32ROM, ESP32S2ROM, ESP32S3ROM,
-                                ESP32C3ROM, ESP32H2ROM, ESP32C2ROM, ESP32C6ROM]:
+                                ESP32C3ROM, ESP32H2ROM, ESP32C2ROM, ESP32C6ROM, ESP32P4ROM]:
                         if chip_magic_value in cls.CHIP_DETECT_MAGIC_VALUE:
                             actually = cls
                             break
@@ -2870,155 +2870,6 @@ class ESP32C2ROM(ESP32C3ROM):
 
 
 
-class ESP32StubLoader(ESP32ROM):
-    """ Access class for ESP32 stub loader, runs on top of ROM.
-    """
-    FLASH_WRITE_SIZE = 0x4000  # matches MAX_WRITE_BLOCK in stub_loader.c
-    STATUS_BYTES_LENGTH = 2  # same as ESP8266, different to ESP32 ROM
-    IS_STUB = True
-
-    def __init__(self, rom_loader):
-        self.secure_download_mode = rom_loader.secure_download_mode
-        self._port = rom_loader._port
-        self._trace_enabled = rom_loader._trace_enabled
-        self.flush_input()  # resets _slip_reader
-
-
-ESP32ROM.STUB_CLASS = ESP32StubLoader
-
-
-class ESP32S2StubLoader(ESP32S2ROM):
-    """ Access class for ESP32-S2 stub loader, runs on top of ROM.
-
-    (Basically the same as ESP32StubLoader, but different base class.
-    Can possibly be made into a mixin.)
-    """
-    FLASH_WRITE_SIZE = 0x4000  # matches MAX_WRITE_BLOCK in stub_loader.c
-    STATUS_BYTES_LENGTH = 2  # same as ESP8266, different to ESP32 ROM
-    IS_STUB = True
-
-    def __init__(self, rom_loader):
-        self.secure_download_mode = rom_loader.secure_download_mode
-        self._port = rom_loader._port
-        self._trace_enabled = rom_loader._trace_enabled
-        self.flush_input()  # resets _slip_reader
-
-        if rom_loader.uses_usb():
-            self.ESP_RAM_BLOCK = self.USB_RAM_BLOCK
-            self.FLASH_WRITE_SIZE = self.USB_RAM_BLOCK
-
-
-ESP32S2ROM.STUB_CLASS = ESP32S2StubLoader
-
-
-class ESP32S3StubLoader(ESP32S3ROM):
-    """ Access class for ESP32S3 stub loader, runs on top of ROM.
-
-    (Basically the same as ESP32StubLoader, but different base class.
-    Can possibly be made into a mixin.)
-    """
-    FLASH_WRITE_SIZE = 0x4000  # matches MAX_WRITE_BLOCK in stub_loader.c
-    STATUS_BYTES_LENGTH = 2  # same as ESP8266, different to ESP32 ROM
-    IS_STUB = True
-
-    def __init__(self, rom_loader):
-        self.secure_download_mode = rom_loader.secure_download_mode
-        self._port = rom_loader._port
-        self._trace_enabled = rom_loader._trace_enabled
-        self.flush_input()  # resets _slip_reader
-
-        if rom_loader.uses_usb():
-            self.ESP_RAM_BLOCK = self.USB_RAM_BLOCK
-            self.FLASH_WRITE_SIZE = self.USB_RAM_BLOCK
-
-
-ESP32S3ROM.STUB_CLASS = ESP32S3StubLoader
-
-
-class ESP32C3StubLoader(ESP32C3ROM):
-    """ Access class for ESP32C3 stub loader, runs on top of ROM.
-
-    (Basically the same as ESP32StubLoader, but different base class.
-    Can possibly be made into a mixin.)
-    """
-    FLASH_WRITE_SIZE = 0x4000  # matches MAX_WRITE_BLOCK in stub_loader.c
-    STATUS_BYTES_LENGTH = 2  # same as ESP8266, different to ESP32 ROM
-    IS_STUB = True
-
-    def __init__(self, rom_loader):
-        self.secure_download_mode = rom_loader.secure_download_mode
-        self._port = rom_loader._port
-        self._trace_enabled = rom_loader._trace_enabled
-        self.flush_input()  # resets _slip_reader
-
-
-ESP32C3ROM.STUB_CLASS = ESP32C3StubLoader
-
-
-class ESP32C6StubLoader(ESP32C6ROM):
-    """Access class for ESP32C6 stub loader, runs on top of ROM.
-
-    (Basically the same as ESP32StubLoader, but different base class.
-    Can possibly be made into a mixin.)
-    """
-
-    FLASH_WRITE_SIZE = 0x4000  # matches MAX_WRITE_BLOCK in stub_loader.c
-    STATUS_BYTES_LENGTH = 2  # same as ESP8266, different to ESP32 ROM
-    IS_STUB = True
-
-    def __init__(self, rom_loader):
-        self.secure_download_mode = rom_loader.secure_download_mode
-        self._port = rom_loader._port
-        self._trace_enabled = rom_loader._trace_enabled
-        self.flush_input()  # resets _slip_reader
-
-
-ESP32C6ROM.STUB_CLASS = ESP32C6StubLoader
-
-
-class ESP32H2StubLoader(ESP32H2ROM):
-    """Access class for ESP32H2 stub loader, runs on top of ROM.
-
-    (Basically the same as ESP32StubLoader, but different base class.
-    Can possibly be made into a mixin.)
-    """
-
-    FLASH_WRITE_SIZE = 0x4000  # matches MAX_WRITE_BLOCK in stub_loader.c
-    STATUS_BYTES_LENGTH = 2  # same as ESP8266, different to ESP32 ROM
-    IS_STUB = True
-
-    def __init__(self, rom_loader):
-        self.secure_download_mode = rom_loader.secure_download_mode
-        self._port = rom_loader._port
-        self._trace_enabled = rom_loader._trace_enabled
-        self.flush_input()  # resets _slip_reader
-
-
-ESP32H2ROM.STUB_CLASS = ESP32H2StubLoader
-
-
-class ESP32C2StubLoader(ESP32C2ROM):
-    """Access class for ESP32C2 stub loader, runs on top of ROM.
-
-    (Basically the same as ESP32StubLoader, but different base class.
-    Can possibly be made into a mixin.)
-    """
-
-    FLASH_WRITE_SIZE = 0x4000  # matches MAX_WRITE_BLOCK in stub_loader.c
-    STATUS_BYTES_LENGTH = 2  # same as ESP8266, different to ESP32 ROM
-    IS_STUB = True
-
-    def __init__(self, rom_loader):
-        self.secure_download_mode = rom_loader.secure_download_mode
-        self._port = rom_loader._port
-        self._trace_enabled = rom_loader._trace_enabled
-        self.flush_input()  # resets _slip_reader
-
-
-ESP32C2ROM.STUB_CLASS = ESP32C2StubLoader
-
-
-
 class ESP32P4ROM(ESP32ROM):
     CHIP_NAME = "ESP32-P4"
     IMAGE_CHIP_ID = 18
@@ -3030,7 +2881,7 @@ class ESP32P4ROM(ESP32ROM):
 
     BOOTLOADER_FLASH_OFFSET = 0x2000  # First 2 sectors are reserved for FE purposes
 
-    CHIP_DETECT_MAGIC_VALUE = [0x0, 0x0ADDBAD0]
+    CHIP_DETECT_MAGIC_VALUE = [0x0, 0x0ADDBAD0, 0x7039ad9]
 
     UART_DATE_REG_ADDR = 0x500CA000 + 0x8C
 
@@ -3210,6 +3061,155 @@ class ESP32P4ROM(ESP32ROM):
                 "WARNING: GPIO pins 24 and 25 are used by USB-Serial/JTAG, "
                 "consider using other pins for SPI flash connection."
             )
+
+
+
+class ESP32StubLoader(ESP32ROM):
+    """ Access class for ESP32 stub loader, runs on top of ROM.
+    """
+    FLASH_WRITE_SIZE = 0x4000  # matches MAX_WRITE_BLOCK in stub_loader.c
+    STATUS_BYTES_LENGTH = 2  # same as ESP8266, different to ESP32 ROM
+    IS_STUB = True
+
+    def __init__(self, rom_loader):
+        self.secure_download_mode = rom_loader.secure_download_mode
+        self._port = rom_loader._port
+        self._trace_enabled = rom_loader._trace_enabled
+        self.flush_input()  # resets _slip_reader
+
+
+ESP32ROM.STUB_CLASS = ESP32StubLoader
+
+
+class ESP32S2StubLoader(ESP32S2ROM):
+    """ Access class for ESP32-S2 stub loader, runs on top of ROM.
+
+    (Basically the same as ESP32StubLoader, but different base class.
+    Can possibly be made into a mixin.)
+    """
+    FLASH_WRITE_SIZE = 0x4000  # matches MAX_WRITE_BLOCK in stub_loader.c
+    STATUS_BYTES_LENGTH = 2  # same as ESP8266, different to ESP32 ROM
+    IS_STUB = True
+
+    def __init__(self, rom_loader):
+        self.secure_download_mode = rom_loader.secure_download_mode
+        self._port = rom_loader._port
+        self._trace_enabled = rom_loader._trace_enabled
+        self.flush_input()  # resets _slip_reader
+
+        if rom_loader.uses_usb():
+            self.ESP_RAM_BLOCK = self.USB_RAM_BLOCK
+            self.FLASH_WRITE_SIZE = self.USB_RAM_BLOCK
+
+
+ESP32S2ROM.STUB_CLASS = ESP32S2StubLoader
+
+
+class ESP32S3StubLoader(ESP32S3ROM):
+    """ Access class for ESP32S3 stub loader, runs on top of ROM.
+
+    (Basically the same as ESP32StubLoader, but different base class.
+    Can possibly be made into a mixin.)
+    """
+    FLASH_WRITE_SIZE = 0x4000  # matches MAX_WRITE_BLOCK in stub_loader.c
+    STATUS_BYTES_LENGTH = 2  # same as ESP8266, different to ESP32 ROM
+    IS_STUB = True
+
+    def __init__(self, rom_loader):
+        self.secure_download_mode = rom_loader.secure_download_mode
+        self._port = rom_loader._port
+        self._trace_enabled = rom_loader._trace_enabled
+        self.flush_input()  # resets _slip_reader
+
+        if rom_loader.uses_usb():
+            self.ESP_RAM_BLOCK = self.USB_RAM_BLOCK
+            self.FLASH_WRITE_SIZE = self.USB_RAM_BLOCK
+
+
+ESP32S3ROM.STUB_CLASS = ESP32S3StubLoader
+
+
+class ESP32C3StubLoader(ESP32C3ROM):
+    """ Access class for ESP32C3 stub loader, runs on top of ROM.
+
+    (Basically the same as ESP32StubLoader, but different base class.
+    Can possibly be made into a mixin.)
+    """
+    FLASH_WRITE_SIZE = 0x4000  # matches MAX_WRITE_BLOCK in stub_loader.c
+    STATUS_BYTES_LENGTH = 2  # same as ESP8266, different to ESP32 ROM
+    IS_STUB = True
+
+    def __init__(self, rom_loader):
+        self.secure_download_mode = rom_loader.secure_download_mode
+        self._port = rom_loader._port
+        self._trace_enabled = rom_loader._trace_enabled
+        self.flush_input()  # resets _slip_reader
+
+
+ESP32C3ROM.STUB_CLASS = ESP32C3StubLoader
+
+
+class ESP32C6StubLoader(ESP32C6ROM):
+    """Access class for ESP32C6 stub loader, runs on top of ROM.
+
+    (Basically the same as ESP32StubLoader, but different base class.
+    Can possibly be made into a mixin.)
+    """
+
+    FLASH_WRITE_SIZE = 0x4000  # matches MAX_WRITE_BLOCK in stub_loader.c
+    STATUS_BYTES_LENGTH = 2  # same as ESP8266, different to ESP32 ROM
+    IS_STUB = True
+
+    def __init__(self, rom_loader):
+        self.secure_download_mode = rom_loader.secure_download_mode
+        self._port = rom_loader._port
+        self._trace_enabled = rom_loader._trace_enabled
+        self.flush_input()  # resets _slip_reader
+
+
+ESP32C6ROM.STUB_CLASS = ESP32C6StubLoader
+
+
+class ESP32H2StubLoader(ESP32H2ROM):
+    """Access class for ESP32H2 stub loader, runs on top of ROM.
+
+    (Basically the same as ESP32StubLoader, but different base class.
+    Can possibly be made into a mixin.)
+    """
+
+    FLASH_WRITE_SIZE = 0x4000  # matches MAX_WRITE_BLOCK in stub_loader.c
+    STATUS_BYTES_LENGTH = 2  # same as ESP8266, different to ESP32 ROM
+    IS_STUB = True
+
+    def __init__(self, rom_loader):
+        self.secure_download_mode = rom_loader.secure_download_mode
+        self._port = rom_loader._port
+        self._trace_enabled = rom_loader._trace_enabled
+        self.flush_input()  # resets _slip_reader
+
+
+ESP32H2ROM.STUB_CLASS = ESP32H2StubLoader
+
+
+class ESP32C2StubLoader(ESP32C2ROM):
+    """Access class for ESP32C2 stub loader, runs on top of ROM.
+
+    (Basically the same as ESP32StubLoader, but different base class.
+    Can possibly be made into a mixin.)
+    """
+
+    FLASH_WRITE_SIZE = 0x4000  # matches MAX_WRITE_BLOCK in stub_loader.c
+    STATUS_BYTES_LENGTH = 2  # same as ESP8266, different to ESP32 ROM
+    IS_STUB = True
+
+    def __init__(self, rom_loader):
+        self.secure_download_mode = rom_loader.secure_download_mode
+        self._port = rom_loader._port
+        self._trace_enabled = rom_loader._trace_enabled
+        self.flush_input()  # resets _slip_reader
+
+
+ESP32C2ROM.STUB_CLASS = ESP32C2StubLoader
 
 
 class ESP32P4StubLoader(ESP32P4ROM):
