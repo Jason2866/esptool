@@ -394,7 +394,7 @@ class ESPLoader(object):
             res = struct.unpack("<IBBBBBBBBI", res[:16])  # 4b flags, 1b flash_crypt_cnt, 7*1b key_purposes, 4b chip_id
             chip_id = res[9]  # 2/4 status bytes invariant
 
-            for cls in [ESP32S3ROM, ESP32C3ROM, ESP32C6ROM, ESP32H2ROM, ESP32C2ROM]:
+            for cls in [ESP32S3ROM, ESP32C3ROM, ESP32C6ROM, ESP32H2ROM, ESP32C2ROM, ESP32P4ROM]:
                 if chip_id == cls.IMAGE_CHIP_ID:
                     inst = cls(detect_port._port, baud, trace_enabled=trace_enabled)
                     inst._post_connect()
