@@ -57,7 +57,7 @@ except Exception:
         raise
 
 
-__version__ = "3.4.0"
+__version__ = "3.5.0"
 
 MAX_UINT32 = 0xffffffff
 MAX_UINT24 = 0xffffff
@@ -75,7 +75,7 @@ DEFAULT_SERIAL_WRITE_TIMEOUT = 10     # timeout for serial port write
 DEFAULT_CONNECT_ATTEMPTS = 7          # default number of times to try connection
 WRITE_BLOCK_ATTEMPTS = 3              # number of times to try writing a data block
 
-SUPPORTED_CHIPS = ['esp8266', 'esp32', 'esp32s2', 'esp32s3', 'esp32c3', 'esp32c6', 'esp32h2', 'esp32c2']
+SUPPORTED_CHIPS = ['esp8266', 'esp32', 'esp32s2', 'esp32s3', 'esp32c3', 'esp32c6', 'esp32h2', 'esp32c2', 'esp32p4']
 
 
 def timeout_per_mb(seconds_per_mb, size_bytes):
@@ -96,6 +96,7 @@ def _chip_to_rom_loader(chip):
         'esp32c6': ESP32C6ROM,
         'esp32h2': ESP32H2ROM,
         'esp32c2': ESP32C2ROM,
+        'esp32p4': ESP32P4ROM,
     }[chip]
 
 
@@ -811,7 +812,7 @@ class ESPLoader(object):
 
         params = struct.pack('<IIII', erase_size, num_blocks, self.FLASH_WRITE_SIZE, offset)
         if isinstance(self, (ESP32S2ROM, ESP32S3ROM, ESP32C3ROM,
-                             ESP32C6ROM, ESP32H2ROM, ESP32C2ROM)) and not self.IS_STUB:
+                             ESP32C6ROM, ESP32H2ROM, ESP32C2ROM, ESP32P4ROM)) and not self.IS_STUB:
             params += struct.pack('<I', 1 if begin_rom_encrypted else 0)
         self.check_command("enter Flash download mode", self.ESP_FLASH_BEGIN,
                            params, timeout=timeout)
@@ -842,7 +843,7 @@ class ESPLoader(object):
 
     def flash_encrypt_block(self, data, seq, timeout=DEFAULT_TIMEOUT):
         """Encrypt, write block to flash, retry if fail"""
-        if isinstance(self, (ESP32S2ROM, ESP32C3ROM, ESP32S3ROM, ESP32H2ROM, ESP32C2ROM)) and not self.IS_STUB:
+        if isinstance(self, (ESP32S2ROM, ESP32C3ROM, ESP32S3ROM, ESP32H2ROM, ESP32C2ROM, ESP32P4ROM)) and not self.IS_STUB:
             # ROM support performs the encrypted writes via the normal write command,
             # triggered by flash_begin(begin_rom_encrypted=True)
             return self.flash_block(data, seq, timeout)
@@ -966,7 +967,7 @@ class ESPLoader(object):
         print("Compressed %d bytes to %d..." % (size, compsize))
         params = struct.pack('<IIII', write_size, num_blocks, self.FLASH_WRITE_SIZE, offset)
         if isinstance(self, (ESP32S2ROM, ESP32S3ROM, ESP32C3ROM,
-                             ESP32C6ROM, ESP32H2ROM, ESP32C2ROM)) and not self.IS_STUB:
+                             ESP32C6ROM, ESP32H2ROM, ESP32C2ROM, ESP32P4ROM)) and not self.IS_STUB:
             params += struct.pack('<I', 0)  # extra param is to enter encrypted flash mode via ROM (not supported currently)
         self.check_command("enter compressed flash mode", self.ESP_FLASH_DEFL_BEGIN, params, timeout=timeout)
         if size != 0 and not self.IS_STUB:
@@ -3017,6 +3018,7 @@ class ESP32C2StubLoader(ESP32C2ROM):
 ESP32C2ROM.STUB_CLASS = ESP32C2StubLoader
 
 
+
 class ESP32P4ROM(ESP32ROM):
     CHIP_NAME = "ESP32-P4"
     IMAGE_CHIP_ID = 18
@@ -3230,6 +3232,7 @@ class ESP32P4StubLoader(ESP32P4ROM):
 
 
 ESP32P4ROM.STUB_CLASS = ESP32P4StubLoader
+
 
 
 class ESPBOOTLOADER(object):
@@ -4068,6 +4071,22 @@ class ESP32C2FirmwareImage(ESP32FirmwareImage):
 ESP32C2ROM.BOOTLOADER_IMAGE = ESP32C2FirmwareImage
 
 
+class ESP32P4FirmwareImage(ESP32FirmwareImage):
+    """ESP32P4 Firmware Image almost exactly the same as ESP32FirmwareImage"""
+    ROM_LOADER = ESP32P4ROM
+
+    def set_mmu_page_size(self, size):
+        if size not in [8192, 16384, 32768, 65536]:
+            raise FatalError(
+                "{} bytes is not a valid ESP32-P4 page size, "
+                "select from 64KB, 32KB, 16KB, 8KB.".format(size)
+            )
+        self.IROM_ALIGN = size
+
+
+ESP32P4ROM.BOOTLOADER_IMAGE = ESP32P4FirmwareImage
+
+
 class ELFFile(object):
     SEC_TYPE_PROGBITS = 0x01
     SEC_TYPE_STRTAB = 0x03
@@ -4812,6 +4831,10 @@ def elf2image(args):
             image.secure_pad = '2'
     elif args.chip == 'esp32c2':
         image = ESP32C2FirmwareImage()
+        if args.secure_pad_v2:
+            image.secure_pad = '2'
+    elif args.chip == 'esp32p4':
+        image = ESP32P4FirmwareImage()
         if args.secure_pad_v2:
             image.secure_pad = '2'
     elif args.version == '1':  # ESP8266
