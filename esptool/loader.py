@@ -98,6 +98,8 @@ DEFAULT_SERIAL_WRITE_TIMEOUT = cfg.getfloat("serial_write_timeout", 10)
 DEFAULT_CONNECT_ATTEMPTS = cfg.getint("connect_attempts", 7)
 # Number of times to try writing a data block
 WRITE_BLOCK_ATTEMPTS = cfg.getint("write_block_attempts", 3)
+# Number of times to try opening the serial port
+DEFAULT_OPEN_PORT_ATTEMPTS = cfg.getint("open_port_attempts", 1)
 
 
 def timeout_per_mb(seconds_per_mb, size_bytes):
@@ -266,6 +268,9 @@ class ESPLoader(object):
 
     UART_DATE_REG_ADDR = 0x60000078
 
+    # Whether the SPI peripheral sends from MSB of 32-bit register, or the MSB of valid LSB bits.
+    SPI_ADDR_REG_MSB = True
+
     # This ROM address has a different value on each chip model
     CHIP_DETECT_MAGIC_REG_ADDR = 0x40001000
 
@@ -351,10 +356,7 @@ class ESPLoader(object):
                     port_issues.append(
                         [  # permission denied error
                             re.compile(r"Permission denied", re.IGNORECASE),
-                            (
-                                "Try to add user into dialout group: "
-                                "sudo usermod -a -G dialout $USER"
-                            ),
+                            ("Try to add user into dialout or uucp group."),
                         ],
                     )
 
@@ -706,6 +708,15 @@ class ESPLoader(object):
                 "Connection may fail if the chip is not in bootloader "
                 "or flasher stub mode.",
             )
+
+        if self._port.name.startswith("socket:"):
+            mode = "no_reset"  # not possible to toggle DTR/RTS over a TCP socket
+            print(
+                "Note: It's not possible to reset the chip over a TCP socket. "
+                "Automatic resetting to bootloader has been disabled, "
+                "reset the chip manually."
+            )
+
         print("Connecting...", end="")
         sys.stdout.flush()
         last_error = None
@@ -1393,7 +1404,9 @@ class ESPLoader(object):
         self.write_reg(
             SPI_USR2_REG, (7 << SPI_USR2_COMMAND_LEN_SHIFT) | spiflash_command
         )
-        if addr and addr_len > 0:
+        if addr_len > 0:
+            if self.SPI_ADDR_REG_MSB:
+                addr = addr << (32 - addr_len)
             self.write_reg(SPI_ADDR_REG, addr)
         if data_bits == 0:
             self.write_reg(SPI_W0_REG, 0)  # clear data register before we read it

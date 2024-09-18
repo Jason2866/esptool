@@ -33,12 +33,13 @@
     dynamic = ["version", "scripts"]
 
     dependencies = [
-        "bitstring>=3.1.6",
+        "bitstring>=3.1.6,!=4.2.0",
         "cryptography>=2.1.4",
         "ecdsa>=0.16.0",
         "pyserial>=3.3",
         "reedsolo>=1.5.3,<1.8",
         "PyYAML>=5.1",
+        'argcomplete>=3; sys_platform != "win32"',
     ]
 
 [project.urls]
@@ -74,7 +75,7 @@
     version = {attr = "esptool.__init__.__version__"}
 
 [tool.commitizen]
-    version = "4.7.0"
+    version = "4.8.0"
     update_changelog_on_bump = true
     tag_format = "v$version"
     changelog_start_rev = "v4.2.1"

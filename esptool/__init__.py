@@ -2,7 +2,7 @@
 # Espressif Systems (Shanghai) CO LTD, other contributors as noted.
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
-
+# PYTHON_ARGCOMPLETE_OK
 __all__ = [
     "chip_id",
     "detect_chip",
@@ -28,7 +28,7 @@ __all__ = [
     "write_mem",
 ]
 
-__version__ = "4.7.1"
+__version__ = "4.8.0"
 
 import argparse
 import inspect
@@ -49,6 +49,7 @@ from esptool.cmds import (
     erase_flash,
     erase_region,
     flash_id,
+    read_flash_sfdp,
     get_security_info,
     image_info,
     load_ram,
@@ -66,7 +67,13 @@ from esptool.cmds import (
     write_mem,
 )
 from esptool.config import load_config_file
-from esptool.loader import DEFAULT_CONNECT_ATTEMPTS, StubFlasher, ESPLoader, list_ports
+from esptool.loader import (
+    DEFAULT_CONNECT_ATTEMPTS,
+    DEFAULT_OPEN_PORT_ATTEMPTS,
+    StubFlasher,
+    ESPLoader,
+    list_ports,
+)
 from esptool.targets import CHIP_DEFS, CHIP_LIST, ESP32ROM
 from esptool.util import (
     FatalError,
@@ -74,6 +81,7 @@ from esptool.util import (
     flash_size_bytes,
     strip_chip_name,
 )
+from itertools import chain, cycle, repeat
 
 import serial
 
@@ -620,6 +628,14 @@ def main(argv=None, esp=None):
         type=arg_auto_size,
     )
 
+    parser_read_flash_sfdp = subparsers.add_parser(
+        "read_flash_sfdp",
+        help="Read SPI flash SFDP (Serial Flash Discoverable Parameters)",
+    )
+    add_spi_flash_subparsers(parser_read_flash_sfdp, allow_keep=True, auto_detect=True)
+    parser_read_flash_sfdp.add_argument("addr", type=arg_auto_int)
+    parser_read_flash_sfdp.add_argument("bytes", type=int)
+
     parser_merge_bin = subparsers.add_parser(
         "merge_bin",
         help="Merge multiple raw binary files into a single file for later flashing",
@@ -690,6 +706,15 @@ def main(argv=None, esp=None):
     for operation in subparsers.choices.keys():
         assert operation in globals(), "%s should be a module function" % operation
 
+    # Enable argcomplete only on Unix-like systems
+    if sys.platform != "win32":
+        try:
+            import argcomplete
+
+            argcomplete.autocomplete(parser)
+        except ImportError:
+            pass
+
     argv = expand_file_arguments(argv or sys.argv[1:])
 
     args = parser.parse_args(argv)
@@ -754,6 +779,27 @@ def main(argv=None, esp=None):
             print("Found %d serial ports" % len(ser_list))
         else:
             ser_list = [args.port]
+        open_port_attempts = os.environ.get(
+            "ESPTOOL_OPEN_PORT_ATTEMPTS", DEFAULT_OPEN_PORT_ATTEMPTS
+        )
+        try:
+            open_port_attempts = int(open_port_attempts)
+        except ValueError:
+            raise SystemExit("Invalid value for ESPTOOL_OPEN_PORT_ATTEMPTS")
+        if open_port_attempts != 1:
+            if args.port is None or args.chip == "auto":
+                print(
+                    "WARNING: The ESPTOOL_OPEN_PORT_ATTEMPTS (open_port_attempts) option can only be used with --port and --chip arguments."
+                )
+            else:
+                esp = esp or connect_loop(
+                    args.port,
+                    initial_baud,
+                    args.chip,
+                    open_port_attempts,
+                    args.trace,
+                    args.before,
+                )
         esp = esp or get_default_connected_device(
             ser_list,
             port=args.port,
@@ -1081,6 +1127,53 @@ def expand_file_arguments(argv):
         print(f"esptool.py {' '.join(new_args)}")
         return new_args
     return argv
+
+
+def connect_loop(
+    port: str,
+    initial_baud: int,
+    chip: str,
+    max_retries: int,
+    trace: bool = False,
+    before: str = "default_reset",
+):
+    chip_class = CHIP_DEFS[chip]
+    esp = None
+    print(f"Serial port {port}")
+
+    first = True
+    ten_cycle = cycle(chain(repeat(False, 9), (True,)))
+    retry_loop = chain(
+        repeat(False, max_retries - 1), (True,) if max_retries else cycle((False,))
+    )
+
+    for last, every_tenth in zip(retry_loop, ten_cycle):
+        try:
+            esp = chip_class(port, initial_baud, trace)
+            if not first:
+                # break the retrying line
+                print("")
+            esp.connect(before)
+            return esp
+        except (
+            FatalError,
+            serial.serialutil.SerialException,
+            IOError,
+            OSError,
+        ) as err:
+            if esp and esp._port:
+                esp._port.close()
+            esp = None
+            if first:
+                print(err)
+                print("Retrying failed connection", end="", flush=True)
+                first = False
+            if last:
+                raise err
+            if every_tenth:
+                # print a dot every second
+                print(".", end="", flush=True)
+            time.sleep(0.1)
 
 
 def get_default_connected_device(
