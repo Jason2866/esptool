@@ -12,7 +12,7 @@ import time
 import zlib
 import itertools
 
-from intelhex import IntelHex
+from esptool.intelhex import IntelHex
 from serial import SerialException
 
 from .bin_image import ELFFile, ImageSegment, LoadFirmwareImage
