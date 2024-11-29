@@ -141,7 +141,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: manifest
-          path: /home/runner/work/esptool/esptool/package.json
+          path: /home/runner/work/esptool-linux-amd64/esptool/package.json
 
   push_stubs:
     name: Commit changed package.json
@@ -180,8 +180,10 @@ jobs:
           uses: actions/download-artifact@v4
         - name: Rename and package binaries
           run: |
-            zip -r esptool-macos-arm.zip ./esptool-macos-arm
-            zip -r esptool-macos.zip ./esptool-macos
+            zip -r esptool-armv7.zip ./esptool-armv7
+            zip -r esptool-aarch64.zip ./esptool-aarch64
+            zip -r esptool-macos-arm64.zip ./esptool-macos-arm64
+            zip -r esptool-macos-amd64.zip ./esptool-macos-amd64
             zip -r esptool-linux-amd64.zip ./esptool-linux-amd64
             zip -r esptool-win64.zip ./esptool-win64
         - name: Release
