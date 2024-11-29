@@ -132,7 +132,7 @@ jobs:
           name: ${{ env.DISTPATH }}
           path: ${{ env.DISTPATH }}
       - name: Update package.json when a release tag is set
-        if: startsWith(github.ref, 'refs/tags/') && matrix.platform == 'linux-amd64'
+        if: matrix.platform == 'linux-amd64'
         run: |
           rm package.json
           python ci/gen_pio_manifest.py -o "./" -s ${{ github.ref_name }}
