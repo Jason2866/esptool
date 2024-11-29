@@ -9,26 +9,87 @@ on:
     - '.github/**' # Ignore changes towards the .github directory
 
 jobs:
-  build-esptool-binaries:
-    name: Build esptool binaries for ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+  build-esptool-binaries-arm:
+    name: Build esptool binaries for ${{ matrix.platform }}
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        os: [macos-14, macos-13, ubuntu-latest, windows-latest]
+        platform: [armv7, aarch64]
+    env:
+      DISTPATH: esptool-${{ matrix.platform }}
+      STUBS_DIR: ./esptool/targets/stub_flasher/
+      EFUSE_DIR: ./espefuse/efuse_defs/
+      PIP_EXTRA_INDEX_URL: "https://dl.espressif.com/pypi"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - uses: uraimo/run-on-arch-action@v2
+        name: Build and test in ${{ matrix.platform }}
+        with:
+          distro: ubuntu20.04
+          shell: /bin/bash
+          # Not required, but speeds up builds by storing container images in
+          # a GitHub package registry.
+          githubToken: ${{ github.token }}
+          # Create an artifacts directory
+          setup: mkdir -p "${PWD}/${{ env.DISTPATH }}"
+          dockerRunArgs: --volume "${PWD}/${{ env.DISTPATH }}:/${{ env.DISTPATH }}"
+          install: |
+            apt-get update -y
+            apt-get install -y python3 python3-pip python3-setuptools libffi-dev
+          run: |
+            adduser --disabled-password --gecos "" builder
+            chmod -R a+rwx /home/runner/work/esptool
+            su builder <<EOF
+            export PATH=\$PATH:/home/builder/.local/bin
+            # Install dependencies
+            python -m pip install --upgrade pip
+            # PyInstaller >=6.0 results in significantly more antivirus false positives
+            pip install pyinstaller==5.13.2
+            pip install --user -e .
+
+            # Build with PyInstaller
+            pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico --add-data="${{ env.STUBS_DIR }}1/*.json:${{ env.STUBS_DIR }}1/" --add-data="${{ env.STUBS_DIR }}2/*.json:${{ env.STUBS_DIR }}2/" esptool.py
+            pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico --add-data="${{ env.EFUSE_DIR }}*.yaml:${{ env.EFUSE_DIR }}" espefuse.py
+            pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico espsecure.py
+            pyinstaller --distpath ./${{ env.DISTPATH }} -F --icon=ci/espressif.ico esp_rfc2217_server.py
+            
+            # Test binaries
+            ./${{ env.DISTPATH }}/esptool -h
+            ./${{ env.DISTPATH }}/espefuse -h
+            ./${{ env.DISTPATH }}/espsecure -h
+            ./${{ env.DISTPATH }}/esp_rfc2217_server -h
+
+      - name: Archive artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.DISTPATH }}
+          path: ${{ env.DISTPATH }}
+
+  build-esptool-binaries:
+    name: Build esptool binaries for ${{ matrix.platform }}
+    runs-on: ${{ matrix.RUN_ON }}
+    strategy:
+      matrix:
+        platform: [macos-amd64, macos-arm64, windows, linux-amd64]
         include:
-        - os: macos-14
-          TARGET: macos-arm
+        - platform: macos-amd64
+          TARGET: macos-amd64
           SEPARATOR: ':'
-        - os: macos-13
-          TARGET: macos
+          RUN_ON: macos-13 # Versions 13 and lower are Intel-based.
+        - platform: macos-arm64
+          TARGET: macos-arm64
           SEPARATOR: ':'
-        - os: ubuntu-latest
-          TARGET: linux-amd64
-          SEPARATOR: ':'
-        - os: windows-latest
+          RUN_ON: macos-latest # Versions 14 and higher are ARM-based.
+        - platform: windows
           TARGET: win64
           EXTEN: .exe
           SEPARATOR: ';'
+          RUN_ON: windows-latest
+        - platform: linux-amd64
+          TARGET: linux-amd64
+          SEPARATOR: ':'
+          RUN_ON: ubuntu-20.04
     env:
       DISTPATH: esptool-${{ matrix.TARGET }}
       STUBS_DIR: ./esptool/targets/stub_flasher/
@@ -37,8 +98,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          ref: main_work
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -49,10 +108,9 @@ jobs:
           python ci/patch_release.py --version ${{ github.ref_name }} esptool/__init__.py
           #git diff
       - name: Install dependencies
-        # PyInstaller >=6.0 results in significantly more antivirus false positives
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller==5.13.2
+          pip install pyinstaller==6.11.1
           pip install --user -e .
       - name: Build with PyInstaller
         run: |
@@ -68,18 +126,18 @@ jobs:
           ./${{ env.DISTPATH }}/espsecure${{ matrix.EXTEN }} -h
           ./${{ env.DISTPATH }}/esp_rfc2217_server${{ matrix.EXTEN }} -h
       - name: Archive artifact
-        uses: actions/upload-artifact@master
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.DISTPATH }}
           path: ${{ env.DISTPATH }}
       - name: Update package.json when a release tag is set
-        if: startsWith(github.ref, 'refs/tags/') && matrix.os == 'ubuntu-latest'
+        if: startsWith(github.ref, 'refs/tags/') && matrix.platform == 'linux-amd64'
         run: |
-          rm package.json
+          rm -f package.json
           python ci/gen_pio_manifest.py -o "./" -s ${{ github.ref_name }}
       - name: Upload package.json artifact
-        if: matrix.os == 'ubuntu-latest'
-        uses: jason2866/upload-artifact@v2.0.3
+        if: startsWith(github.ref, 'refs/tags/') && matrix.platform == 'linux-amd64'
+        uses: actions/upload-artifact@v4
         with:
           name: manifest
           path: /home/runner/work/esptool/esptool/package.json
@@ -92,28 +150,29 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: main_work
+          ref: main
+        if: startsWith(github.ref, 'refs/tags/')
       - name: Download artifacts
-        uses: jason2866/download-artifact@v3.0.4
+        uses: actions/download-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           name: |
             manifest
           path: |
            ./
       - uses: stefanzweifel/git-auto-commit-action@v5
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           commit_message: update manifest
 
   release:
       name: Upload release binaries
-      needs: build-esptool-binaries
+      needs: [build-esptool-binaries, build-esptool-binaries-arm, push_stubs]
       if: startsWith(github.ref, 'refs/tags/')
       runs-on: ubuntu-latest
       steps:
         - name: Checkout repository
           uses: actions/checkout@v4
-          with:
-            ref: main_work
         - name: Zip esptool.py
           run: |
             echo "Packaging new esptool release: ${{ github.ref_name }}"
@@ -122,11 +181,13 @@ jobs:
             python ci/gen_pio_manifest.py -o "./" -s ${{ github.ref_name }}
             python ci/pack_python.py
         - name: Download built binaries
-          uses: actions/download-artifact@master
+          uses: actions/download-artifact@v4
         - name: Rename and package binaries
           run: |
-            zip -r esptool-macos-arm.zip ./esptool-macos-arm
-            zip -r esptool-macos.zip ./esptool-macos
+            zip -r esptool-armv7.zip ./esptool-armv7
+            zip -r esptool-aarch64.zip ./esptool-aarch64
+            zip -r esptool-macos-arm64.zip ./esptool-macos-arm64
+            zip -r esptool-macos-amd64.zip ./esptool-macos-amd64
             zip -r esptool-linux-amd64.zip ./esptool-linux-amd64
             zip -r esptool-win64.zip ./esptool-win64
         - name: Release
