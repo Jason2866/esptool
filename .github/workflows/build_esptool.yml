@@ -134,14 +134,14 @@ jobs:
       - name: Update package.json when a release tag is set
         if: matrix.platform == 'linux-amd64'
         run: |
-          rm package.json
+          # rm package.json
           python ci/gen_pio_manifest.py -o "./" -s ${{ github.ref_name }}
       - name: Upload package.json artifact
         if: matrix.platform == 'linux-amd64'
         uses: actions/upload-artifact@v4
         with:
           name: manifest
-          path: /home/runner/work/esptool-linux-amd64/esptool/package.json
+          path: /home/runner/work/esptool/esptool/package.json
 
   push_stubs:
     name: Commit changed package.json
