@@ -108,10 +108,10 @@ def detect_chip(
     try:
         print("Detecting chip type...", end="")
         chip_id = detect_port.get_chip_id()
-        for cls in [
-            n for n in ROM_LIST if n.CHIP_NAME not in ("ESP8266", "ESP32", "ESP32-S2")
-        ]:
+        for cls in ROM_LIST:
             # cmd not supported on ESP8266 and ESP32 + ESP32-S2 doesn't return chip_id
+            if cls.USES_MAGIC_VALUE:
+                continue
             if chip_id == cls.IMAGE_CHIP_ID:
                 inst = cls(detect_port._port, baud, trace_enabled=trace_enabled)
                 try:
@@ -144,11 +144,12 @@ def detect_chip(
             )
 
             for cls in ROM_LIST:
-                if chip_magic_value in cls.CHIP_DETECT_MAGIC_VALUE:
+                if not cls.USES_MAGIC_VALUE:
+                    continue
+                if chip_magic_value == cls.MAGIC_VALUE:
                     inst = cls(detect_port._port, baud, trace_enabled=trace_enabled)
                     inst = check_if_stub(inst)
                     inst._post_connect()
-                    inst.check_chip_id()
                     break
             else:
                 err_msg = f"Unexpected chip magic value {chip_magic_value:#010x}."
@@ -875,7 +876,8 @@ def image_info(args):
         for idx, seg in enumerate(image.segments):
             segs = seg.get_memory_type(image)
             seg_name = ", ".join(segs)
-            if "DROM" in segs:  # The DROM segment starts with the esp_app_desc_t struct
+            # The DROM segment starts with the esp_app_desc_t struct
+            if "DROM" in segs and app_desc is None:
                 app_desc = seg.data[:256]
             elif "DRAM" in segs:
                 # The DRAM segment starts with the esp_bootloader_desc_t struct
@@ -914,7 +916,7 @@ def image_info(args):
             pass  # ESP8266 image has no append_digest field
 
         if app_desc:
-            APP_DESC_STRUCT_FMT = "<II" + "8s" + "32s32s16s16s32s32s" + "80s"
+            APP_DESC_STRUCT_FMT = "<II" + "8s" + "32s32s16s16s32s32sHHB" + "3s" + "72s"
             (
                 magic_word,
                 secure_version,
@@ -925,6 +927,10 @@ def image_info(args):
                 date,
                 idf_ver,
                 app_elf_sha256,
+                min_efuse_blk_rev_full,
+                max_efuse_blk_rev_full,
+                mmu_page_size,
+                reserv3,
                 reserv2,
             ) = struct.unpack(APP_DESC_STRUCT_FMT, app_desc)
 
@@ -938,6 +944,13 @@ def image_info(args):
                 print(f'Compile time: {date.decode("utf-8")} {time.decode("utf-8")}')
                 print(f"ELF file SHA256: {hexify(app_elf_sha256, uppercase=False)}")
                 print(f'ESP-IDF: {idf_ver.decode("utf-8")}')
+                print(
+                    f"Minimal eFuse block revision: {min_efuse_blk_rev_full // 100}.{min_efuse_blk_rev_full % 100}"
+                )
+                print(
+                    f"Maximal eFuse block revision: {max_efuse_blk_rev_full // 100}.{max_efuse_blk_rev_full % 100}"
+                )
+                print(f"MMU page size: {2 ** mmu_page_size // 1024} KB")
                 print(f"Secure version: {secure_version}")
 
         elif bootloader_desc:
