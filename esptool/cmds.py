@@ -13,7 +13,7 @@ import zlib
 import itertools
 import re
 
-from intelhex import IntelHex
+from esptool.intelhex import IntelHex
 from serial import SerialException
 
 from .bin_image import ELFFile, ImageSegment, LoadFirmwareImage
