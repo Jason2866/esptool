@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        platform: [armv7, aarch64]
+        platform: [armv7]
     env:
       DISTPATH: esptool-${{ matrix.platform }}
       STUBS_DIR: ./esptool/targets/stub_flasher/
@@ -72,7 +72,7 @@ jobs:
     runs-on: ${{ matrix.RUN_ON }}
     strategy:
       matrix:
-        platform: [macos-amd64, macos-arm64, windows, linux-amd64]
+        platform: [macos-amd64, macos-arm64, windows, linux-amd64, linux-arm64]
         include:
         - platform: macos-amd64
           TARGET: macos-amd64
@@ -91,6 +91,10 @@ jobs:
           TARGET: linux-amd64
           SEPARATOR: ':'
           RUN_ON: ubuntu-20.04
+        - platform: linux-arm64
+          TARGET: linux-arm64
+          SEPARATOR: ':'
+          RUN_ON: ubuntu-22.04-arm
     env:
       DISTPATH: esptool-${{ matrix.TARGET }}
       STUBS_DIR: ./esptool/targets/stub_flasher/
@@ -186,7 +190,7 @@ jobs:
         - name: Rename and package binaries
           run: |
             zip -r esptool-armv7.zip ./esptool-armv7
-            zip -r esptool-aarch64.zip ./esptool-aarch64
+            zip -r esptool-linux-arm64.zip ./esptool-linux-arm64
             zip -r esptool-macos-arm64.zip ./esptool-macos-arm64
             zip -r esptool-macos-amd64.zip ./esptool-macos-amd64
             zip -r esptool-linux-amd64.zip ./esptool-linux-amd64
