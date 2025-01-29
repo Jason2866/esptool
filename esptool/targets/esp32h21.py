@@ -1,10 +1,12 @@
-# SPDX-FileCopyrightText: 2024 Fredrik Ahlberg, Angus Gratton,
+# SPDX-FileCopyrightText: 2024-2025 Fredrik Ahlberg, Angus Gratton,
 # Espressif Systems (Shanghai) CO LTD, other contributors as noted.
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 
 from .esp32h2 import ESP32H2ROM
+from ..loader import StubMixin
+from ..logger import log
 from ..util import FatalError
 
 
@@ -49,29 +51,16 @@ class ESP32H21ROM(ESP32H2ROM):
         if not set(spi_connection).issubset(set(range(0, 28))):
             raise FatalError("SPI Pin numbers must be in the range 0-27.")
         if any([v for v in spi_connection if v in [26, 27]]):
-            print(
-                "WARNING: GPIO pins 26 and 27 are used by USB-Serial/JTAG, "
+            log.warning(
+                "GPIO pins 26 and 27 are used by USB-Serial/JTAG, "
                 "consider using other pins for SPI flash connection."
             )
 
 
-class ESP32H21StubLoader(ESP32H21ROM):
-    """Access class for ESP32H21 stub loader, runs on top of ROM.
+class ESP32H21StubLoader(StubMixin, ESP32H21ROM):
+    """Stub loader for ESP32-H21, runs on top of ROM."""
 
-    (Basically the same as ESP32StubLoader, but different base class.
-    Can possibly be made into a mixin.)
-    """
-
-    FLASH_WRITE_SIZE = 0x4000  # matches MAX_WRITE_BLOCK in stub_loader.c
-    STATUS_BYTES_LENGTH = 2  # same as ESP8266, different to ESP32 ROM
-    IS_STUB = True
-
-    def __init__(self, rom_loader):
-        self.secure_download_mode = rom_loader.secure_download_mode
-        self._port = rom_loader._port
-        self._trace_enabled = rom_loader._trace_enabled
-        self.cache = rom_loader.cache
-        self.flush_input()  # resets _slip_reader
+    pass
 
 
 ESP32H21ROM.STUB_CLASS = ESP32H21StubLoader

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2024 Fredrik Ahlberg, Angus Gratton,
+# SPDX-FileCopyrightText: 2024-2025 Fredrik Ahlberg, Angus Gratton,
 # Espressif Systems (Shanghai) CO LTD, other contributors as noted.
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
@@ -8,7 +8,8 @@ from time import sleep
 from typing import Dict
 
 from .esp32 import ESP32ROM
-from ..loader import ESPLoader
+from ..loader import ESPLoader, StubMixin
+from ..logger import log
 from ..util import FatalError, NotImplementedInROMError
 
 
@@ -257,13 +258,13 @@ class ESP32P4ROM(ESP32ROM):
         if not set(spi_connection).issubset(set(range(0, 55))):
             raise FatalError("SPI Pin numbers must be in the range 0-54.")
         if any([v for v in spi_connection if v in [24, 25]]):
-            print(
-                "WARNING: GPIO pins 24 and 25 are used by USB-Serial/JTAG, "
+            log.warning(
+                "GPIO pins 24 and 25 are used by USB-Serial/JTAG, "
                 "consider using other pins for SPI flash connection."
             )
 
     def watchdog_reset(self):
-        print("Hard resetting with a watchdog...")
+        log.print("Hard resetting with a watchdog...")
         self.write_reg(self.RTC_CNTL_WDTWPROTECT_REG, self.RTC_CNTL_WDT_WKEY)  # unlock
         self.write_reg(self.RTC_CNTL_WDTCONFIG1_REG, 2000)  # set WDT timeout
         self.write_reg(
@@ -279,24 +280,11 @@ class ESP32P4ROM(ESP32ROM):
             ESPLoader.hard_reset(self)
 
 
-class ESP32P4StubLoader(ESP32P4ROM):
-    """Access class for ESP32P4 stub loader, runs on top of ROM.
-
-    (Basically the same as ESP32StubLoader, but different base class.
-    Can possibly be made into a mixin.)
-    """
-
-    FLASH_WRITE_SIZE = 0x4000  # matches MAX_WRITE_BLOCK in stub_loader.c
-    STATUS_BYTES_LENGTH = 2  # same as ESP8266, different to ESP32 ROM
-    IS_STUB = True
+class ESP32P4StubLoader(StubMixin, ESP32P4ROM):
+    """Stub loader for ESP32-P4, runs on top of ROM."""
 
     def __init__(self, rom_loader):
-        self.secure_download_mode = rom_loader.secure_download_mode
-        self._port = rom_loader._port
-        self._trace_enabled = rom_loader._trace_enabled
-        self.cache = rom_loader.cache
-        self.flush_input()  # resets _slip_reader
-
+        super().__init__(rom_loader)  # Initialize the mixin
         if rom_loader.uses_usb_otg():
             self.ESP_RAM_BLOCK = self.USB_RAM_BLOCK
             self.FLASH_WRITE_SIZE = self.USB_RAM_BLOCK

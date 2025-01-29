@@ -128,11 +128,11 @@ class BaseTestCase:
             print(e.output)
             raise
         assert re.search(
-            r"Checksum: [a-fA-F0-9]{2} \(valid\)", output
+            r"Checksum: 0x[a-fA-F0-9]{2} \(valid\)", output
         ), "Checksum calculation should be valid"
         if assert_sha:
             assert re.search(
-                r"Validation Hash: [a-fA-F0-9]{64} \(valid\)", output
+                r"Validation hash: [a-fA-F0-9]{64} \(valid\)", output
             ), "SHA256 should be valid"
         assert (
             "warning" not in output.lower()
@@ -146,7 +146,7 @@ class BaseTestCase:
         cmd += [elf_path] + extra_args
         print("\nExecuting {}".format(" ".join(cmd)))
         try:
-            output = subprocess.check_output(cmd)
+            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
             output = output.decode("utf-8")
             print(output)
             assert (

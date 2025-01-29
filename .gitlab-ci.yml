@@ -93,6 +93,7 @@ host_tests:
     - coverage run --parallel-mode -m pytest ${CI_PROJECT_DIR}/test/test_merge_bin.py
     - coverage run --parallel-mode -m pytest ${CI_PROJECT_DIR}/test/test_image_info.py
     - coverage run --parallel-mode -m pytest ${CI_PROJECT_DIR}/test/test_modules.py
+    - coverage run --parallel-mode -m pytest ${CI_PROJECT_DIR}/test/test_logger.py
     # some .coverage files in sub-directories are not collected on some runners, move them firs
     - find . -mindepth 2 -type f -name ".coverage*" -print -exec mv --backup=numbered {} . \;
 
@@ -109,15 +110,12 @@ host_tests_espefuse:
         - esp32c2
         - esp32c3
         - esp32c5
-        - esp32c5beta3
         - esp32c6
         - esp32c61
         - esp32h2
-        - esp32h2beta1
         - esp32p4
         - esp32s2
         - esp32s3
-        - esp32s3beta2
         - esp32h21
   script:
     - coverage run --parallel-mode -m pytest ${CI_PROJECT_DIR}/test/test_espefuse.py --chip ${TARGET}
@@ -135,6 +133,7 @@ host_tests_latest_python:
     -  pytest ${CI_PROJECT_DIR}/test/test_merge_bin.py
     -  pytest ${CI_PROJECT_DIR}/test/test_image_info.py
     -  pytest ${CI_PROJECT_DIR}/test/test_modules.py
+    -  pytest ${CI_PROJECT_DIR}/test/test_logger.py
     -  pytest ${CI_PROJECT_DIR}/test/test_espefuse.py --chip esp32
 
 # A new job "host_test_hsm" is created for the test "test_espsecure_hsm.py" which runs an ubuntu image,
@@ -471,6 +470,7 @@ host_tests_windows:
     - python -m coverage run --parallel-mode -m pytest ${CI_PROJECT_DIR}/test/test_image_info.py
     - python -m coverage run --parallel-mode -m pytest ${CI_PROJECT_DIR}/test/test_modules.py
     - python -m coverage run --parallel-mode -m pytest ${CI_PROJECT_DIR}/test/test_merge_bin.py
+    - python -m coverage run --parallel-mode -m pytest ${CI_PROJECT_DIR}/test/test_logger.py
 
 target_tests_windows:
   extends: .windows_test
