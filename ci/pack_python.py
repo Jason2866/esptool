@@ -5,7 +5,7 @@ import subprocess
 
 
 def main():
-    
+
     # remove not needed for plain python use
     shutil.rmtree("ci", ignore_errors=True)
     shutil.rmtree("docs", ignore_errors=True)
