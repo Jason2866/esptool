@@ -30,7 +30,7 @@ def convert_version(version_string):
     match = re.search(regex_pattern, version_string)
     if not match:
         sys.stderr.write(
-            f"Failed to find a regex match for '{regex_pattern}' in '{version_string}'\n"
+            f"No regex match fund for '{regex_pattern}' in '{version_string}'\n"
         )
         return ""
 
@@ -56,7 +56,7 @@ def main(dst_dir, version_string):
         json.dump(MANIFEST_DATA, fp, indent=2)
 
     print(
-        f"Generated esptool package.json '{manifest_file_path}' with '{converted_version}' version"
+        f"Generated '{manifest_file_path}' with '{converted_version}' version"
     )
     return 0
 
@@ -68,7 +68,7 @@ if __name__ == "__main__":
         "--dst-dir",
         dest="dst_dir",
         required=True,
-        help="Destination folder where the 'package.json' manifest will be located",
+        help="Destination where the 'package.json' will be located",
     )
     parser.add_argument(
         "-s",
