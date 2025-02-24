@@ -1,11 +1,10 @@
-# This file includes the operations with eFuses for ESP32-P4 chip
+# This file includes the operations with eFuses for ESP32-H4 chip
 #
-# SPDX-FileCopyrightText: 2023 Espressif Systems (Shanghai) CO LTD
+# SPDX-FileCopyrightText: 2025 Espressif Systems (Shanghai) CO LTD
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 import argparse
-import io
 import os  # noqa: F401. It is used in IDF scripts
 import traceback
 
@@ -18,7 +17,6 @@ from .. import util
 from ..base_operations import (
     add_common_commands,
     add_force_write_always,
-    add_show_sensitive_info_option,
     burn_bit,
     burn_block_data,
     burn_efuse,
@@ -57,7 +55,6 @@ def add_commands(subparsers, efuses):
     )
     protect_options(burn_key)
     add_force_write_always(burn_key)
-    add_show_sensitive_info_option(burn_key)
     burn_key.add_argument(
         "block",
         help="Key block to burn",
@@ -108,7 +105,6 @@ def add_commands(subparsers, efuses):
     )
     protect_options(burn_key_digest)
     add_force_write_always(burn_key_digest)
-    add_show_sensitive_info_option(burn_key_digest)
     burn_key_digest.add_argument(
         "block",
         help="Key block to burn",
@@ -193,72 +189,10 @@ def set_flash_voltage(esp, efuses, args):
 
 
 def adc_info(esp, efuses, args):
-    print("Block version:", efuses.get_block_version())
-    if efuses.get_block_version() >= 1:
-        for efuse in efuses:
-            if efuse.category == "calibration":
-                print(f"{efuse.name:<30} = ", efuses[efuse.name].get())
-
-
-def key_block_is_unused(block, key_purpose_block):
-    if not block.is_readable() or not block.is_writeable():
-        return False
-
-    if key_purpose_block.get() != "USER" or not key_purpose_block.is_writeable():
-        return False
-
-    if not block.get_bitstring().all(False):
-        return False
-
-    return True
-
-
-def get_next_key_block(efuses, current_key_block, block_name_list):
-    key_blocks = [b for b in efuses.blocks if b.key_purpose_name]
-    start = key_blocks.index(current_key_block)
-
-    # Sort key blocks so that we pick the next free block (and loop around if necessary)
-    key_blocks = key_blocks[start:] + key_blocks[0:start]
-
-    # Exclude any other blocks that will be be burned
-    key_blocks = [b for b in key_blocks if b.name not in block_name_list]
-
-    for block in key_blocks:
-        key_purpose_block = efuses[block.key_purpose_name]
-        if key_block_is_unused(block, key_purpose_block):
-            return block
-
-    return None
-
-
-def split_512_bit_key(efuses, block_name_list, datafile_list, keypurpose_list):
-    i = keypurpose_list.index("XTS_AES_256_KEY")
-    block_name = block_name_list[i]
-
-    block_num = efuses.get_index_block_by_name(block_name)
-    block = efuses.blocks[block_num]
-
-    data = datafile_list[i].read()
-    if len(data) != 64:
-        raise esptool.FatalError(
-            "Incorrect key file size %d, XTS_AES_256_KEY should be 64 bytes" % len(data)
-        )
-
-    key_block_2 = get_next_key_block(efuses, block, block_name_list)
-    if not key_block_2:
-        raise esptool.FatalError("XTS_AES_256_KEY requires two free keyblocks")
-
-    keypurpose_list.append("XTS_AES_256_KEY_1")
-    datafile_list.append(io.BytesIO(data[:32]))
-    block_name_list.append(block_name)
-
-    keypurpose_list.append("XTS_AES_256_KEY_2")
-    datafile_list.append(io.BytesIO(data[32:]))
-    block_name_list.append(key_block_2.name)
-
-    keypurpose_list.pop(i)
-    datafile_list.pop(i)
-    block_name_list.pop(i)
+    # fmt: off
+    # TODO: [ESP32H4] IDF-12268
+    print("Not supported yet")
+    # fmt: on
 
 
 def burn_key(esp, efuses, args, digest=None):
@@ -275,11 +209,6 @@ def burn_key(esp, efuses, args, digest=None):
     keypurpose_list = args.keypurpose[
         0 : len([name for name in args.keypurpose if name is not None]) :
     ]
-
-    if "XTS_AES_256_KEY" in keypurpose_list:
-        # XTS_AES_256_KEY is not an actual HW key purpose, needs to be split into
-        # XTS_AES_256_KEY_1 and XTS_AES_256_KEY_2
-        split_512_bit_key(efuses, block_name_list, datafile_list, keypurpose_list)
 
     util.check_duplicate_name_in_list(block_name_list)
     if len(block_name_list) != len(datafile_list) or len(block_name_list) != len(
@@ -308,10 +237,10 @@ def burn_key(esp, efuses, args, digest=None):
 
         if digest is None:
             if keypurpose == "ECDSA_KEY":
-                sk = espsecure.load_ecdsa_signing_key(datafile)
+                sk = espsecure._load_ecdsa_signing_key(datafile)
                 data = sk.to_string()
                 if len(data) == 24:
-                    # the private key is 24 bytes long for NIST192p, add 8 bytes of padding
+                    # the private key is 24 bytes long for NIST192p, and 8 bytes of padding
                     data = b"\x00" * 8 + data
             else:
                 data = datafile.read()
@@ -323,13 +252,7 @@ def burn_key(esp, efuses, args, digest=None):
         if efuses[block.key_purpose_name].need_reverse(keypurpose):
             revers_msg = f"\tReversing byte order for {keypurpose} hardware peripheral"
             data = data[::-1]
-        print(
-            "-> [{}]".format(
-                util.hexify(data, " ")
-                if args.show_sensitive_info
-                else " ".join(["??"] * len(data))
-            )
-        )
+        print("-> [%s]" % (util.hexify(data, " ")))
         if revers_msg:
             print(revers_msg)
         if len(data) != num_bytes:

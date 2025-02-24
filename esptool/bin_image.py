@@ -11,7 +11,7 @@ import os
 import re
 import struct
 import tempfile
-from typing import IO, Optional
+from typing import IO, Optional, Tuple
 
 from esptool.intelhex import HexRecordError, IntelHex
 
@@ -25,6 +25,7 @@ from .targets import (
     ESP32C61ROM,
     ESP32H2ROM,
     ESP32H21ROM,
+    ESP32H4ROM,
     ESP32P4ROM,
     ESP32ROM,
     ESP32S2ROM,
@@ -87,6 +88,7 @@ def LoadFirmwareImage(chip, image_file):
                 "esp32h2": ESP32H2FirmwareImage,
                 "esp32h21": ESP32H21FirmwareImage,
                 "esp32p4": ESP32P4FirmwareImage,
+                "esp32h4": ESP32H4FirmwareImage,
             }[chip](f)
         else:  # Otherwise, ESP8266 so look at magic to determine the image type
             magic = ord(f.read(1))
@@ -171,6 +173,8 @@ class ELFSection(ImageSegment):
 class BaseFirmwareImage(object):
     SEG_HEADER_LEN = 8
     SHA256_DIGEST_LEN = 32
+    IROM_ALIGN = 0
+    MMU_PAGE_SIZE_CONF: Tuple[int, ...] = ()
 
     """ Base class with common firmware image functions """
 
@@ -273,12 +277,14 @@ class BaseFirmwareImage(object):
         segment_name = segment_name if segment_name is not None else ""
         if segment_len & 3:
             raise FatalError(
-                f"Invalid {segment_name} segment length {segment_len:#x}. It has to be multiple of 4."
+                f"Invalid {segment_name} segment length {segment_len:#x}. "
+                "It has to be multiple of 4."
             )
         SIXTEEN_MB = 0x1000000
         if segment_len >= SIXTEEN_MB:
             raise FatalError(
-                f"Invalid {segment_name} segment length {segment_len:#x}. The 16 MB limit has been exceeded."
+                f"Invalid {segment_name} segment length {segment_len:#x}. "
+                "The 16 MB limit has been exceeded."
             )
         f.write(struct.pack("<II", segment.addr, segment_len))
         f.write(segment_data)
@@ -404,14 +410,27 @@ class BaseFirmwareImage(object):
         self.segments = segments
 
     def set_mmu_page_size(self, size):
-        """
-        If supported, this should be overridden by the chip-specific class.
-        Gets called in elf2image.
-        """
-        log.warning(
-            f"Changing MMU page size is not supported on {self.ROM_LOADER.CHIP_NAME}! "
-            "Defaulting to 64KB."
-        )
+        """Set the MMU page size for the image if supported by the chip."""
+        if not self.MMU_PAGE_SIZE_CONF and size != self.IROM_ALIGN:
+            # For chips where MMU page size cannot be set or is fixed, just log a
+            # warning and use default if there is one.
+            log.warning(
+                "Changing MMU page size is not supported on "
+                f"{self.ROM_LOADER.CHIP_NAME}! Defaulting to "
+                f"{self.IROM_ALIGN // 1024}KB."
+                if self.IROM_ALIGN != 0
+                else ""
+            )
+        elif self.MMU_PAGE_SIZE_CONF and size not in self.MMU_PAGE_SIZE_CONF:
+            # For chips with configurable MMU page sizes, error is raised when the
+            # size is not valid.
+            valid_sizes = ", ".join(f"{x // 1024}KB" for x in self.MMU_PAGE_SIZE_CONF)
+            raise FatalError(
+                f"{size} bytes is not a valid {self.ROM_LOADER.CHIP_NAME} page size, "
+                f"select from {valid_sizes}."
+            )
+        else:
+            self.IROM_ALIGN = size
 
 
 class ESP8266ROMFirmwareImage(BaseFirmwareImage):
@@ -507,17 +526,20 @@ class ESP8266V2FirmwareImage(BaseFirmwareImage):
             if first_flash_mode != self.flash_mode:
                 log.warning(
                     f"Flash mode value in first header (0x{first_flash_mode:02x}) "
-                    f"disagrees with second (0x{self.flash_mode:02x}). Using second value."
+                    f"disagrees with second (0x{self.flash_mode:02x}). "
+                    "Using second value."
                 )
             if first_flash_size_freq != self.flash_size_freq:
                 log.warning(
-                    f"Flash size/freq value in first header (0x{first_flash_size_freq:02x}) "
-                    f"disagrees with second (0x{self.flash_size_freq:02x}). Using second value."
+                    "Flash size/freq value in first header "
+                    f"(0x{first_flash_size_freq:02x}) disagrees with second "
+                    f"(0x{self.flash_size_freq:02x}). Using second value."
                 )
             if first_entrypoint != self.entrypoint:
                 log.warning(
                     f"Entrypoint address in first header (0x{first_entrypoint:08x}) "
-                    f"disagrees with second header (0x{self.entrypoint:08x}). Using second value."
+                    f"disagrees with second header (0x{self.entrypoint:08x}). "
+                    "Using second value."
                 )
 
             # load all the usual segments
@@ -593,7 +615,7 @@ class ESP32FirmwareImage(BaseFirmwareImage):
     """ESP32 firmware image is very similar to V1 ESP8266 image,
     except with an additional 16 byte reserved header at top of image,
     and because of new flash mapping capabilities the flash-mapped regions
-    can be placed in the normal image (just @ 64kB padded offsets).
+    can be placed in the normal image (just @ MMU page size padded offsets).
     """
 
     ROM_LOADER = ESP32ROM
@@ -717,10 +739,10 @@ class ESP32FirmwareImage(BaseFirmwareImage):
                 for segment in flash_segments[1:]:
                     if segment.addr // self.IROM_ALIGN == last_addr // self.IROM_ALIGN:
                         raise FatalError(
-                            "Segment loaded at 0x%08x lands in same 64KB flash mapping "
-                            "as segment loaded at 0x%08x. Can't generate binary. "
+                            f"Segment loaded at {segment.addr:#010x} lands in same "
+                            f"{self.IROM_ALIGN // 1024} KB flash mapping as segment "
+                            f"loaded at {last_addr:#010x}. Can't generate binary. "
                             "Suggest changing linker script or ELF to merge sections."
-                            % (segment.addr, last_addr)
                         )
                     last_addr = segment.addr
 
@@ -782,7 +804,7 @@ class ESP32FirmwareImage(BaseFirmwareImage):
                     self.save_flash_segment(f, segment)
                     total_segments += 1
             else:  # not self.ram_only_header
-                # try to fit each flash segment on a 64kB aligned boundary
+                # try to fit each flash segment on a MMU page size aligned boundary
                 # by padding with parts of the non-flash segments...
                 while len(flash_segments) > 0:
                     segment = flash_segments[0]
@@ -813,8 +835,8 @@ class ESP32FirmwareImage(BaseFirmwareImage):
                     total_segments += 1
 
             if self.secure_pad:
-                # pad the image so that after signing it will end on a a 64KB boundary.
-                # This ensures all mapped flash content will be verified.
+                # pad the image so that after signing it will end on a a MMU page size
+                # boundary. This ensures all mapped flash content will be verified.
                 if not self.append_digest:
                     raise FatalError(
                         "secure_pad only applies if a SHA-256 digest "
@@ -832,7 +854,7 @@ class ESP32FirmwareImage(BaseFirmwareImage):
                 elif self.secure_pad == "2":  # Secure Boot V2
                     # after checksum: SHA-256 digest +
                     # signature sector,
-                    # but we place signature sector after the 64KB boundary
+                    # but we place signature sector after the MMU page size boundary
                     space_after_checksum = 32
                 pad_len = (
                     self.IROM_ALIGN - align_past - checksum_space - space_after_checksum
@@ -895,7 +917,8 @@ class ESP32FirmwareImage(BaseFirmwareImage):
         if self.chip_id != self.ROM_LOADER.IMAGE_CHIP_ID:
             log.warning(
                 f"Unexpected chip ID in image. Expected {self.ROM_LOADER.IMAGE_CHIP_ID}"
-                f" but value was {self.chip_id}. Is this image for a different chip model?"
+                f" but value was {self.chip_id}. Is this image for a different "
+                "chip model?"
             )
 
         self.min_rev = fields[5]
@@ -970,14 +993,14 @@ class ESP8266V3FirmwareImage(ESP32FirmwareImage):
                 for segment in flash_segments[1:]:
                     if segment.addr // self.IROM_ALIGN == last_addr // self.IROM_ALIGN:
                         raise FatalError(
-                            "Segment loaded at 0x%08x lands in same 64KB flash mapping "
-                            "as segment loaded at 0x%08x. Can't generate binary. "
+                            f"Segment loaded at {segment.addr:#010x} lands in same "
+                            f"{self.IROM_ALIGN // 1024} KB flash mapping as segment "
+                            f"loaded at {last_addr:#010x}. Can't generate binary. "
                             "Suggest changing linker script or ELF to merge sections."
-                            % (segment.addr, last_addr)
                         )
                     last_addr = segment.addr
 
-            # try to fit each flash segment on a 64kB aligned boundary
+            # try to fit each flash segment on a MMU page size aligned boundary
             # by padding with parts of the non-flash segments...
             while len(flash_segments) > 0:
                 segment = flash_segments[0]
@@ -1078,14 +1101,7 @@ class ESP32C2FirmwareImage(ESP32FirmwareImage):
     """ESP32C2 Firmware Image almost exactly the same as ESP32FirmwareImage"""
 
     ROM_LOADER = ESP32C2ROM
-
-    def set_mmu_page_size(self, size):
-        if size not in [16384, 32768, 65536]:
-            raise FatalError(
-                "{} bytes is not a valid ESP32-C2 page size, "
-                "select from 64KB, 32KB, 16KB.".format(size)
-            )
-        self.IROM_ALIGN = size
+    MMU_PAGE_SIZE_CONF = (16384, 32768, 65536)
 
 
 ESP32C2ROM.BOOTLOADER_IMAGE = ESP32C2FirmwareImage
@@ -1095,14 +1111,7 @@ class ESP32C6FirmwareImage(ESP32FirmwareImage):
     """ESP32C6 Firmware Image almost exactly the same as ESP32FirmwareImage"""
 
     ROM_LOADER = ESP32C6ROM
-
-    def set_mmu_page_size(self, size):
-        if size not in [8192, 16384, 32768, 65536]:
-            raise FatalError(
-                "{} bytes is not a valid ESP32-C6 page size, "
-                "select from 64KB, 32KB, 16KB, 8KB.".format(size)
-            )
-        self.IROM_ALIGN = size
+    MMU_PAGE_SIZE_CONF = (8192, 16384, 32768, 65536)
 
 
 ESP32C6ROM.BOOTLOADER_IMAGE = ESP32C6FirmwareImage
@@ -1117,13 +1126,30 @@ class ESP32C61FirmwareImage(ESP32C6FirmwareImage):
 ESP32C61ROM.BOOTLOADER_IMAGE = ESP32C61FirmwareImage
 
 
-class ESP32C5FirmwareImage(ESP32C6FirmwareImage):
-    """ESP32C5 Firmware Image almost exactly the same as ESP32C6FirmwareImage"""
+class ESP32C5FirmwareImage(ESP32FirmwareImage):
+    """ESP32C5 Firmware Image almost exactly the same as ESP32FirmwareImage"""
 
     ROM_LOADER = ESP32C5ROM
 
 
 ESP32C5ROM.BOOTLOADER_IMAGE = ESP32C5FirmwareImage
+
+
+class ESP32H4FirmwareImage(ESP32FirmwareImage):
+    """ESP32H4 Firmware Image almost exactly the same as ESP32FirmwareImage"""
+
+    ROM_LOADER = ESP32H4ROM
+
+    def set_mmu_page_size(self, size):
+        if size not in [8192, 16384, 32768, 65536]:
+            raise FatalError(
+                "{} bytes is not a valid ESP32-H4 page size, "
+                "select from 64KB, 32KB, 16KB, 8KB.".format(size)
+            )
+        self.IROM_ALIGN = size
+
+
+ESP32H4ROM.BOOTLOADER_IMAGE = ESP32H4FirmwareImage
 
 
 class ESP32P4FirmwareImage(ESP32FirmwareImage):
