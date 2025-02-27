@@ -37,7 +37,8 @@
         "pyserial>=3.3",
         "reedsolo>=1.5.3,<1.8",
         "PyYAML>=5.1",
-        'argcomplete>=3; sys_platform != "win32"',
+        "intelhex",
+        "rich_click",
     ]
 
 [project.urls]
@@ -59,6 +60,10 @@
         "commitizen",
     ]
     hsm = ["python-pkcs11"]
+    docs = [
+        "esp-docs~=1.10",
+        "sphinx-tabs",
+    ]
 
 [tool.setuptools]
     include-package-data = true
