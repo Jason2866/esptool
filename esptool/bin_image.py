@@ -32,7 +32,7 @@ from .targets import (
     ESP32S3ROM,
     ESP8266ROM,
 )
-from .util import FatalError, byte, pad_to
+from .util import FatalError, byte, ImageSource, get_bytes, pad_to
 
 
 def align_file_position(f, size):
@@ -62,48 +62,43 @@ def intel_hex_to_bin(file: IO[bytes], start_addr: int | None = None) -> IO[bytes
         return file
 
 
-def LoadFirmwareImage(chip, image_file):
+def LoadFirmwareImage(chip: str, image_data: ImageSource):
     """
     Load a firmware image. Can be for any supported SoC.
 
     ESP8266 images will be examined to determine if they are original ROM firmware
     images (ESP8266ROMFirmwareImage) or "v2" OTA bootloader images.
 
-    Returns a BaseFirmwareImage subclass, either ESP8266ROMFirmwareImage (v1)
-    or ESP8266V2FirmwareImage (v2).
+    Returns a BaseFirmwareImage subclass.
     """
-
-    def select_image_class(f, chip):
-        chip = re.sub(r"[-()]", "", chip.lower())
-        if chip != "esp8266":
-            return {
-                "esp32": ESP32FirmwareImage,
-                "esp32s2": ESP32S2FirmwareImage,
-                "esp32s3": ESP32S3FirmwareImage,
-                "esp32c3": ESP32C3FirmwareImage,
-                "esp32c2": ESP32C2FirmwareImage,
-                "esp32c6": ESP32C6FirmwareImage,
-                "esp32c61": ESP32C61FirmwareImage,
-                "esp32c5": ESP32C5FirmwareImage,
-                "esp32h2": ESP32H2FirmwareImage,
-                "esp32h21": ESP32H21FirmwareImage,
-                "esp32p4": ESP32P4FirmwareImage,
-                "esp32h4": ESP32H4FirmwareImage,
-            }[chip](f)
-        else:  # Otherwise, ESP8266 so look at magic to determine the image type
-            magic = ord(f.read(1))
-            f.seek(0)
-            if magic == ESPLoader.ESP_IMAGE_MAGIC:
-                return ESP8266ROMFirmwareImage(f)
-            elif magic == ESP8266V2FirmwareImage.IMAGE_V2_MAGIC:
-                return ESP8266V2FirmwareImage(f)
-            else:
-                raise FatalError("Invalid image magic number: %d" % magic)
-
-    if isinstance(image_file, str):
-        with open(image_file, "rb") as f:
-            return select_image_class(f, chip)
-    return select_image_class(image_file, chip)
+    data, _ = get_bytes(image_data)
+    f = io.BytesIO(data)
+    chip = re.sub(r"[-()]", "", chip.lower())
+    if chip == "esp8266":
+        # Look at the magic number to determine the ESP8266 image type
+        magic = ord(f.read(1))
+        f.seek(0)
+        if magic == ESPLoader.ESP_IMAGE_MAGIC:
+            return ESP8266ROMFirmwareImage(f)
+        elif magic == ESP8266V2FirmwareImage.IMAGE_V2_MAGIC:
+            return ESP8266V2FirmwareImage(f)
+        else:
+            raise FatalError(f"Invalid image magic number: {magic}")
+    else:
+        return {
+            "esp32": ESP32FirmwareImage,
+            "esp32s2": ESP32S2FirmwareImage,
+            "esp32s3": ESP32S3FirmwareImage,
+            "esp32c3": ESP32C3FirmwareImage,
+            "esp32c2": ESP32C2FirmwareImage,
+            "esp32c6": ESP32C6FirmwareImage,
+            "esp32c61": ESP32C61FirmwareImage,
+            "esp32c5": ESP32C5FirmwareImage,
+            "esp32h2": ESP32H2FirmwareImage,
+            "esp32h21": ESP32H21FirmwareImage,
+            "esp32p4": ESP32P4FirmwareImage,
+            "esp32h4": ESP32H4FirmwareImage,
+        }[chip](f)
 
 
 class ImageSegment(object):
@@ -457,26 +452,39 @@ class ESP8266ROMFirmwareImage(BaseFirmwareImage):
         """Derive a default output name from the ELF name."""
         return input_file + "-"
 
-    def save(self, basename):
-        """Save a set of V1 images for flashing. Parameter is a base filename."""
-        # IROM data goes in its own plain binary file
+    def save(self, filename: str | None) -> tuple[bytes | None, bytes] | None:
+        irom_data: bytes | None = None
+        other_data: bytes | None = None
+
+        # Handle IROM data
         irom_segment = self.get_irom_segment()
         if irom_segment is not None:
-            with open(
-                "%s0x%05x.bin"
-                % (basename, irom_segment.addr - ESP8266ROM.IROM_MAP_START),
-                "wb",
-            ) as f:
-                f.write(irom_segment.data)
+            irom_data = irom_segment.data
 
-        # everything but IROM goes at 0x00000 in an image file
-        normal_segments = self.get_non_irom_segments()
-        with open("%s0x00000.bin" % basename, "wb") as f:
+        # Handle other segments (everything but IROM)
+        with io.BytesIO() as f:  # Use BytesIO to write to memory
+            normal_segments = self.get_non_irom_segments()
             self.write_common_header(f, normal_segments)
             checksum = ESPLoader.ESP_CHECKSUM_MAGIC
             for segment in normal_segments:
                 checksum = self.save_segment(f, segment, checksum)
             self.append_checksum(f, checksum)
+
+            other_data = f.getvalue()  # Get the bytes from BytesIO
+
+        if filename is not None:
+            # Write IROM data to a file
+            if irom_data is not None:
+                offset = irom_segment.addr - ESP8266ROM.IROM_MAP_START
+                with open(f"{filename}{offset:#07x}.bin", "wb") as f:
+                    f.write(irom_data)
+            # Write other data to a file
+            if other_data is not None:
+                with open(f"{filename}{0:#07x}.bin", "wb") as f:
+                    f.write(other_data)
+            return None
+        else:
+            return (irom_data, other_data)
 
 
 ESP8266ROM.BOOTLOADER_IMAGE = ESP8266ROMFirmwareImage
@@ -561,8 +569,8 @@ class ESP8266V2FirmwareImage(BaseFirmwareImage):
             irom_offs & ~(ESPLoader.FLASH_SECTOR_SIZE - 1),
         )
 
-    def save(self, filename):
-        with open(filename, "wb") as f:
+    def save(self, filename: str | None) -> bytes | None:
+        with io.BytesIO() as f:  # Write to memory first
             # Save first header for irom0 segment
             f.write(
                 struct.pack(
@@ -592,12 +600,19 @@ class ESP8266V2FirmwareImage(BaseFirmwareImage):
                 checksum = self.save_segment(f, segment, checksum)
             self.append_checksum(f, checksum)
 
-        # calculate a crc32 of entire file and append
-        # (algorithm used by recent 8266 SDK bootloaders)
-        with open(filename, "rb") as f:
+            # Calculate CRC32 of the entire file and append
+            f.seek(0)  # Move to the start of the BytesIO buffer
             crc = esp8266_crc32(f.read())
-        with open(filename, "ab") as f:
             f.write(struct.pack(b"<I", crc))
+
+            if filename is not None:
+                # Write the content to a real file
+                with open(filename, "wb") as real_file:
+                    real_file.write(f.getvalue())
+                return None
+            else:
+                # Return the bytes if no filename is provided
+                return f.getvalue()
 
 
 def esp8266_crc32(data):
@@ -686,7 +701,7 @@ class ESP32FirmwareImage(BaseFirmwareImage):
     def warn_if_unusual_segment(self, offset, size, is_irom_segment):
         pass  # TODO: add warnings for wrong ESP32 segment offset/size combinations
 
-    def save(self, filename):
+    def save(self, filename: str | None) -> bytes | None:
         total_segments = 0
         with io.BytesIO() as f:  # write file to memory first
             self.write_common_header(f, self.segments)
@@ -895,8 +910,14 @@ class ESP32FirmwareImage(BaseFirmwareImage):
                     pad_by = self.pad_to_size - (image_length % self.pad_to_size)
                     f.write(b"\xff" * pad_by)
 
-            with open(filename, "wb") as real_file:
-                real_file.write(f.getvalue())
+            if filename is not None:
+                # Write the content to a real file
+                with open(filename, "wb") as real_file:
+                    real_file.write(f.getvalue())
+                return None
+            else:
+                # Return the bytes if no filename is provided
+                return f.getvalue()
 
     def load_extended_header(self, load_file):
         def split_byte(n):
@@ -965,7 +986,7 @@ class ESP8266V3FirmwareImage(ESP32FirmwareImage):
     def is_flash_addr(self, addr):
         return addr > ESP8266ROM.IROM_MAP_START
 
-    def save(self, filename):
+    def save(self, filename: str | None) -> bytes | None:
         total_segments = 0
         with io.BytesIO() as f:  # write file to memory first
             self.write_common_header(f, self.segments)
@@ -1033,8 +1054,14 @@ class ESP8266V3FirmwareImage(ESP32FirmwareImage):
                 digest.update(f.read(image_length))
                 f.write(digest.digest())
 
-            with open(filename, "wb") as real_file:
-                real_file.write(f.getvalue())
+            if filename is not None:
+                # Write the content to a real file
+                with open(filename, "wb") as real_file:
+                    real_file.write(f.getvalue())
+                return None
+            else:
+                # Return the bytes if no filename is provided
+                return f.getvalue()
 
     def load_extended_header(self, load_file):
         def split_byte(n):
@@ -1193,11 +1220,10 @@ class ELFFile(object):
     SEG_TYPE_LOAD = 0x01
     LEN_SEG_HEADER = 0x20
 
-    def __init__(self, name):
-        # Load sections from the ELF file
-        self.name = name
-        with open(self.name, "rb") as f:
-            self._read_elf_file(f)
+    def __init__(self, data):
+        self.data, self.name = get_bytes(data)
+        f = io.BytesIO(self.data)
+        self._read_elf_file(f)
 
     def get_section(self, section_name):
         for s in self.sections:
@@ -1208,6 +1234,7 @@ class ELFFile(object):
     def _read_elf_file(self, f):
         # read the ELF file header
         LEN_FILE_HEADER = 0x34
+        source = "Image" if self.name is None else f"'{self.name}'"
         try:
             (
                 ident,
@@ -1225,25 +1252,23 @@ class ELFFile(object):
                 shnum,
                 shstrndx,
             ) = struct.unpack("<16sHHLLLLLHHHHHH", f.read(LEN_FILE_HEADER))
-        except struct.error as e:
-            raise FatalError(
-                "Failed to read a valid ELF header from %s: %s" % (self.name, e)
-            )
 
+        except struct.error as e:
+            raise FatalError(f"{source} does not have a valid ELF header: {e}")
         if byte(ident, 0) != 0x7F or ident[1:4] != b"ELF":
-            raise FatalError("%s has invalid ELF magic header" % self.name)
+            raise FatalError(f"{source} has invalid ELF magic header")
         if machine not in [0x5E, 0xF3]:
             raise FatalError(
-                "%s does not appear to be an Xtensa or an RISCV ELF file. "
-                "e_machine=%04x" % (self.name, machine)
+                f"{source} does not appear to be an Xtensa or an RISCV ELF image. "
+                f"(e_machine = {machine:#06x})"
             )
         if shentsize != self.LEN_SEC_HEADER:
             raise FatalError(
-                "%s has unexpected section header entry size 0x%x (not 0x%x)"
-                % (self.name, shentsize, self.LEN_SEC_HEADER)
+                f"{source} has unexpected section header entry size {shentsize:#x} "
+                f"(not {self.LEN_SEC_HEADER:#x})"
             )
         if shnum == 0:
-            raise FatalError("%s has 0 section headers" % (self.name))
+            raise FatalError(f"{source} has 0 section headers")
         self._read_sections(f, shoff, shnum, shstrndx)
         self._read_segments(f, _phoff, _phnum, shstrndx)
 
@@ -1253,13 +1278,13 @@ class ELFFile(object):
         section_header = f.read(len_bytes)
         if len(section_header) == 0:
             raise FatalError(
-                "No section header found at offset %04x in ELF file."
-                % section_header_offs
+                f"No section header found at offset {section_header_offs:#06x} "
+                "in ELF image."
             )
         if len(section_header) != (len_bytes):
             raise FatalError(
-                "Only read 0x%x bytes from section header (expected 0x%x.) "
-                "Truncated ELF file?" % (len(section_header), len_bytes)
+                f"Only read {len(section_header):#x} bytes from section header "
+                f"(expected {len_bytes:#x}). Truncated ELF image?"
             )
 
         # walk through the section header and extract all sections
@@ -1315,13 +1340,13 @@ class ELFFile(object):
         segment_header = f.read(len_bytes)
         if len(segment_header) == 0:
             raise FatalError(
-                "No segment header found at offset %04x in ELF file."
-                % segment_header_offs
+                f"No segment header found at offset {segment_header_offs:#06x} "
+                "in ELF image."
             )
         if len(segment_header) != (len_bytes):
             raise FatalError(
-                "Only read 0x%x bytes from segment header (expected 0x%x.) "
-                "Truncated ELF file?" % (len(segment_header), len_bytes)
+                f"Only read {len(segment_header):#x} bytes from segment header "
+                f"(expected {len_bytes:#x}). Truncated ELF image?"
             )
 
         # walk through the segment header and extract all segments
@@ -1357,6 +1382,6 @@ class ELFFile(object):
     def sha256(self):
         # return SHA256 hash of the input ELF file
         sha256 = hashlib.sha256()
-        with open(self.name, "rb") as f:
-            sha256.update(f.read())
+        f = io.BytesIO(self.data)
+        sha256.update(f.read())
         return sha256.digest()

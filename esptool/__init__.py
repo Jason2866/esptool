@@ -627,17 +627,16 @@ def run_cli(ctx):
 @click.pass_context
 def image_info_cli(ctx, filename):
     """Dump headers from a binary file (bootloader or application)"""
-    image_info(filename, ctx.obj["chip"])
+    image_info(filename, chip=None if ctx.obj["chip"] == "auto" else ctx.obj["chip"])
 
 
 @cli.command("elf2image")
-@click.argument("input", type=click.Path(exists=True))
+@click.argument("filename", type=click.Path(exists=True))
 @click.option(
     "--output",
     "-o",
     type=str,
-    help="Output filename prefix (for version 1 image), or filename (for version 2 "
-    "single image)",
+    help="Output filename or filename prefix (for ESP8266 V1 image)",
 )
 @click.option(
     "--version",
@@ -722,10 +721,16 @@ def image_info_cli(ctx, filename):
 )
 @add_spi_flash_options(allow_keep=False, auto_detect=False)
 @click.pass_context
-def elf2image_cli(ctx, **kwargs):
+def elf2image_cli(ctx, filename, **kwargs):
     """Create an application image from ELF file"""
+    if ctx.obj["chip"] == "auto":
+        raise FatalError(
+            f"Specify the --chip argument (choose from {', '.join(CHIP_LIST)})"
+        )
     append_digest = not kwargs.pop("dont_append_digest", False)
-    elf2image(chip=ctx.obj["chip"], append_digest=append_digest, **kwargs)
+    output = kwargs.pop("output", None)
+    output = "auto" if output is None else output
+    elf2image(filename, ctx.obj["chip"], output, append_digest=append_digest, **kwargs)
 
 
 @cli.command("read_mac")
@@ -914,6 +919,10 @@ def read_flash_sfdp_cli(ctx, address, bytes, **kwargs):
 @click.pass_context
 def merge_bin_cli(ctx, addr_filename, **kwargs):
     """Merge multiple raw binary files into a single file for later flashing"""
+    if ctx.obj["chip"] == "auto":
+        raise FatalError(
+            f"Specify the --chip argument (choose from {', '.join(CHIP_LIST)})"
+        )
     merge_bin(addr_filename, chip=ctx.obj["chip"], **kwargs)
 
 
