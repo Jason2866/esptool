@@ -101,7 +101,7 @@ Use the ``-e/--erase-all`` option to erase all flash sectors (not just the write
 Read Flash Contents: ``read_flash``
 -----------------------------------
 
-The read_flash command allows reading back the contents of flash. The arguments to the command are an address, a size, and a filename to dump the output to. For example, to read a full 2MB of attached flash:
+The read_flash command allows reading back the contents of flash. The arguments to the command are an address, a size, and a file path to output to. For example, to read a full 2MB of attached flash:
 
 ::
 
@@ -303,7 +303,7 @@ The output of the command will be in ``raw`` format and gaps between individual 
 
 **RAW options:**
 
-*  The ``--fill-flash-size SIZE`` option will pad the merged binary with `0xFF` bytes to the full flash specified size, for example ``--fill-flash-size 4MB`` will create a 4MB binary file.
+*  The ``--pad-to-size SIZE`` option will pad the merged binary with `0xFF` bytes to the full flash specified size, for example ``--pad-to-size 4MB`` will create a 4MB binary file.
 *  The ``--target-offset 0xNNN`` option will create a merged binary that should be flashed at the specified offset, instead of at offset 0x0.
 
 
@@ -340,5 +340,4 @@ The following commands are less commonly used, or only of interest to advanced u
     *  :ref:`write-flash-status`
     *  :ref:`read-flash-sfdp`
     :esp8266: *  :ref:`chip-id`
-    :esp8266: *  :ref:`make-image`
     :esp8266: *  :ref:`run`

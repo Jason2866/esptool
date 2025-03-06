@@ -20,10 +20,10 @@ The ``write_flash`` command always verifies the MD5 hash of data which is writte
 
 ::
 
-    esptool.py verify_flash --diff yes 0x40000 my_app.elf-0x40000.bin
+    esptool.py verify_flash --diff 0x40000 my_app.elf-0x40000.bin
 
 
-The ``--diff yes`` option specifies that if the files are different, the details should be printed to the console.
+The ``--diff`` option specifies that if the files are different, the details should be printed to the console.
 
 .. note::
 
@@ -133,6 +133,18 @@ The Serial Flash Discoverable Parameters (SFDP) store essential vendor-specific 
 
 This will read 4 bytes from SFDP address 16.
 
+.. only:: not esp8266 and not esp32
+
+    Read Security Info: ``get_security_info``
+    ------------------------------------------
+
+    The ``get_security_info`` command allows you to read security-related information (secure boot, secure download, etc.) about the Espressif devices.
+
+    ::
+
+        esptool.py get_security_info
+
+
 .. only:: esp8266
 
     .. _chip-id:
@@ -147,23 +159,6 @@ This will read 4 bytes from SFDP address 16.
     ::
 
         esptool.py chip_id
-
-    .. _make-image:
-
-    Assemble a Firmware Image: ``make_image``
-    -----------------------------------------
-
-    ``make_image`` allows you to manually assemble a firmware image from binary segments (such as those extracted from objcopy). For example:
-
-    ::
-
-        esptool.py --chip esp8266 make_image -f app.text.bin -a 0x40100000 -f app.data.bin -a 0x3ffe8000 -f app.rodata.bin -a 0x3ffe8c00 app.flash.bin
-
-    This command does not require a serial connection.
-
-    .. note::
-
-        In general, it is better to create an ELF image (including any binary data as part of the ELF, by using objcopy or other tools) and then use ``elf2image`` to generate the ``.bin`` file.
 
     .. _run:
 

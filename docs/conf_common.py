@@ -25,7 +25,14 @@ html_context["github_repo"] = "esptool"
 html_static_path = ["../_static"]
 
 # Conditional content
-extensions += ["esp_docs.esp_extensions.dummy_build_system"]
+extensions += [
+    "esp_docs.esp_extensions.dummy_build_system",
+    "sphinx.ext.autodoc",
+    "sphinx.ext.napoleon",
+    "sphinx_tabs.tabs",
+]
+
+sphinx_tabs_disable_tab_closing = True
 
 ESP8266_DOCS = []
 

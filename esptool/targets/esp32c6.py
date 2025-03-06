@@ -8,7 +8,7 @@ import struct
 from .esp32c3 import ESP32C3ROM
 from ..loader import ESPLoader, StubMixin
 from ..logger import log
-from ..util import FatalError, NotImplementedInROMError
+from ..util import FatalError, NotSupportedError
 
 
 class ESP32C6ROM(ESP32C3ROM):
@@ -130,9 +130,7 @@ class ESP32C6ROM(ESP32C3ROM):
         return 40
 
     def override_vddsdio(self, new_voltage):
-        raise NotImplementedInROMError(
-            "VDD_SDIO overrides are not supported for ESP32-C6"
-        )
+        raise NotSupportedError(self, "Overriding VDDSDIO")
 
     def read_mac(self, mac_type="BASE_MAC"):
         """Read MAC from EFUSE region"""
@@ -153,12 +151,6 @@ class ESP32C6ROM(ESP32C3ROM):
 
     def get_flash_crypt_config(self):
         return None  # doesn't exist on ESP32-C6
-
-    def get_secure_boot_enabled(self):
-        return (
-            self.read_reg(self.EFUSE_SECURE_BOOT_EN_REG)
-            & self.EFUSE_SECURE_BOOT_EN_MASK
-        )
 
     def get_key_block_purpose(self, key_block):
         if key_block < 0 or key_block > self.EFUSE_MAX_KEY:

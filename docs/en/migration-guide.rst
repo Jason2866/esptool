@@ -79,11 +79,11 @@ Beta Target Support Removal
 
 Support for the following beta targets has been **removed in v5**:
 
-- ESP32-C5(beta3)
-- ESP32-C6(beta)
-- ESP32-H2(beta1)
-- ESP32-H2(beta2)
-- ESP32-S3(beta2)
+- ``ESP32-C5(beta3)``
+- ``ESP32-C6(beta)``
+- ``ESP32-H2(beta1)``
+- ``ESP32-H2(beta2)``
+- ``ESP32-S3(beta2)``
 
 **Migration Steps:**
 
@@ -91,3 +91,92 @@ Support for the following beta targets has been **removed in v5**:
 2. Remove any references to these beta targets from CI/CD pipelines or build scripts.
 
 Use esptool ``v4`` for legacy workflows targeting these beta chips.
+
+``verify_flash`` ``--diff`` Argument
+*************************************
+
+The format of the ``--diff`` option of the :ref:`verify_flash <verify-flash>` command has **changed in v5**. Previously, ``--diff=yes/no`` had to be specified to enable or disable the diff output. In the new version, the ``--diff`` option is a simple boolean switch without the need of a ``yes`` or ``no`` value.
+
+**Migration Steps:**
+
+1. Rewrite the ``--diff=yes`` argument to a simple ``--diff`` in any existing ``verify_flash`` commands in scripts/CI pipelines. Delete ``--diff=no`` completely if detailed diff output is not required.
+
+Using esptool as a Python Module
+********************************
+
+All command functions (e.g., ``verify_flash``, ``write_flash``) have been refactored to remove their dependency on the ``args`` object from the argparse module. Instead, all arguments are now passed explicitly as individual parameters. This change, combined with enhancements to the public API, provides a cleaner, more modular interface for programmatic use of esptool in custom scripts and applications (see :ref:`scripting <scripting>`).
+
+**Key Changes:**
+
+- Refactored Function Signatures: Previously, command functions relied on an ``args`` object (e.g., ``args.addr_filename``, ``args.diff``). Now, they take individual parameters with explicit types and default values, improving clarity and enabling a robust API.
+- Public API Expansion: The public API (exposed via ``esptool.cmds``) has been formalized with high-level functions like ``detect_chip()``, ``attach_flash()``, ``write_flash()``, and ``reset_chip()``, designed for ease of use in Python scripts.
+
+**Migration Steps:**
+
+1. Update Function Calls: If you are calling esptool functions programmatically, replace ``args`` object usage with individual parameter passing. Refer to the function signatures in ``esptool.cmds`` for the new parameter names, types, and defaults.
+2. Leverage the Public API: Use the new high-level functions in ``esptool.cmds`` for common operations like chip detection, flash attachment, flashing, resetting, or image generation.
+3. Test your updated scripts to ensure compatibility with the new API.
+
+For detailed examples and API reference, see the :ref:`scripting <scripting>` section.
+
+
+Flash Operations from Non-flash Related Commands
+************************************************
+
+When esptool is used as a CLI tool, the following commands no longer automatically attach the flash by default, since flash access is not required for their core functionality:
+
+- ``load_ram``
+- ``read_mem``
+- ``write_mem``
+- ``dump_mem``
+- ``chip_id``
+- ``read_mac``
+
+The ``--spi-connection`` CLI argument has been **removed** from non-flash related commands in v5. This argument had no effect on the command execution. Affected commands:
+
+- ``elf2image``
+- ``merge_bin``
+
+**Migration Steps:**
+
+1. Update any scripts that attempt to attach flash from non-flash related commands.
+2. If you need to attach flash for above mentioned commands, use the ``attach_flash`` function from the public API instead. For more details see :ref:`scripting <scripting>`.
+3. Remove the ``--spi-connection`` argument from ``elf2image`` and ``merge_bin`` commands.
+
+
+Shell Completion
+****************
+
+The esptool ``v5`` has switched to using `Click <https://click.palletsprojects.com/>`_ for command line argument parsing, which changes how shell completion works.
+
+**Migration Steps:**
+
+1. Remove the old shell completion code from your scripts and shell configuration files like ``.bashrc``, ``.zshrc``, ``.config/fish/config.fish``, etc.
+2. Follow the new shell completion setup instructions in the :ref:`shell-completion` section of the :ref:`installation <installation>` guide.
+
+``merge_bin`` ``--fill-flash-size`` Argument
+********************************************
+
+The ``--fill-flash-size`` option of the :ref:`merge_bin <merge-bin>` command has been renamed to ``--pad-to-size``. This change provides a more intuitive and descriptive name for the argument and is consistent with the naming scheme in other esptool image manipulation commands.
+
+**Migration Steps:**
+
+1. Rename the ``--fill-flash-size`` to ``--pad-to-size`` in any existing ``merge_bin`` commands in scripts/CI pipelines.
+
+``write_flash`` ``--ignore-flash-encryption-efuse-setting`` Argument
+********************************************************************
+
+The ``--ignore-flash-encryption-efuse-setting`` option of the :ref:`write_flash <write-flash>` command has been renamed to ``--ignore-flash-enc-efuse``. This change shortens the argument name to improve readability and consistency with other esptool options.
+
+**Migration Steps:**
+
+1. Rename the ``--ignore-flash-encryption-efuse-setting`` to ``--ignore-flash-enc-efuse`` in any existing ``write_flash`` commands in scripts/CI pipelines.
+
+``make_image`` Command Removal
+******************************
+
+The ``make_image`` command for the ESP8266 has been **removed in v5**. This command has been deprecated in favor of using **objcopy** (or other tools) to generate ELF images and then using ``elf2image`` to create the final ``.bin`` file.
+
+**Migration Steps:**
+
+1. Replace any ``make_image`` workflows with the recommended way of assembling firmware images using **objcopy** and ``elf2image``.

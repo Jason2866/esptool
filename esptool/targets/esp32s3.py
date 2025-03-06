@@ -5,12 +5,11 @@
 
 import struct
 from time import sleep
-from typing import Dict
 
 from .esp32 import ESP32ROM
 from ..loader import ESPLoader, StubMixin
 from ..logger import log
-from ..util import FatalError, NotImplementedInROMError
+from ..util import FatalError, NotSupportedError
 
 
 class ESP32S3ROM(ESP32ROM):
@@ -127,8 +126,7 @@ class ESP32S3ROM(ESP32ROM):
 
     UF2_FAMILY_ID = 0xC47E5767
 
-    EFUSE_MAX_KEY = 5
-    KEY_PURPOSES: Dict[int, str] = {
+    KEY_PURPOSES: dict[int, str] = {
         0: "USER/EMPTY",
         1: "RESERVED",
         2: "XTS_AES_256_KEY_1",
@@ -292,9 +290,7 @@ class ESP32S3ROM(ESP32ROM):
         return None  # not supported on ESP32-S3
 
     def override_vddsdio(self, new_voltage):
-        raise NotImplementedInROMError(
-            "VDD_SDIO overrides are not supported for ESP32-S3"
-        )
+        raise NotSupportedError(self, "Overriding VDDSDIO")
 
     def read_mac(self, mac_type="BASE_MAC"):
         """Read MAC from EFUSE region"""

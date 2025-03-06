@@ -1,15 +1,14 @@
-# SPDX-FileCopyrightText: 2025 Fredrik Ahlberg, Angus Gratton,
+# SPDX-FileCopyrightText: 2014-2025 Fredrik Ahlberg, Angus Gratton,
 # Espressif Systems (Shanghai) CO LTD, other contributors as noted.
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 import struct
 import time
-from typing import Dict, Optional
 
 from ..loader import ESPLoader, StubMixin
 from ..logger import log
-from ..util import FatalError, NotSupportedError
+from ..util import FatalError
 
 
 class ESP32ROM(ESPLoader):
@@ -17,7 +16,6 @@ class ESP32ROM(ESPLoader):
 
     CHIP_NAME = "ESP32"
     IMAGE_CHIP_ID = 0
-    IS_STUB = False
 
     MAGIC_VALUE = 0x00F01D83
 
@@ -126,8 +124,6 @@ class ESP32ROM(ESPLoader):
 
     UF2_FAMILY_ID = 0x1C5F21B0
 
-    KEY_PURPOSES: Dict[int, str] = {}
-
     """ Try to read the BLOCK1 (encryption key) and check if it is valid """
 
     def is_flash_encryption_key_valid(self):
@@ -201,9 +197,6 @@ class ESP32ROM(ESPLoader):
         pkg_version = (word3 >> 9) & 0x07
         pkg_version += ((word3 >> 2) & 0x1) << 3
         return pkg_version
-
-    def get_chip_revision(self):
-        return self.get_major_chip_version() * 100 + self.get_minor_chip_version()
 
     def get_minor_chip_version(self):
         return (self.read_efuse(5) >> 24) & 0x3
@@ -317,9 +310,6 @@ class ESP32ROM(ESPLoader):
         """Read the nth word of the ESP3x EFUSE region."""
         return self.read_reg(self.EFUSE_RD_REG_BASE + (4 * n))
 
-    def chip_id(self):
-        raise NotSupportedError(self, "Function chip_id")
-
     def read_mac(self, mac_type="BASE_MAC"):
         """Read MAC from EFUSE region"""
         if mac_type != "BASE_MAC":
@@ -332,7 +322,7 @@ class ESP32ROM(ESPLoader):
     def get_erase_size(self, offset, size):
         return size
 
-    def _get_efuse_flash_voltage(self) -> Optional[str]:
+    def _get_efuse_flash_voltage(self) -> str | None:
         efuse = self.read_reg(self.EFUSE_VDD_SPI_REG)
         # check efuse setting
         if efuse & (self.VDD_SPI_FORCE | self.VDD_SPI_XPD | self.VDD_SPI_TIEH):
@@ -343,7 +333,7 @@ class ESP32ROM(ESPLoader):
             return "OFF"
         return None
 
-    def _get_rtc_cntl_flash_voltage(self) -> Optional[str]:
+    def _get_rtc_cntl_flash_voltage(self) -> str | None:
         reg = self.read_reg(self.RTC_CNTL_SDIO_CONF_REG)
         # check if override is set in RTC_CNTL_SDIO_CONF_REG
         if reg & self.RTC_CNTL_SDIO_FORCE:
