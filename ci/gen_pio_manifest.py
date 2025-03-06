@@ -30,7 +30,7 @@ def convert_version(version_string):
     match = re.search(regex_pattern, version_string)
     if not match:
         sys.stderr.write(
-            f"No regex match fund for '{regex_pattern}' in '{version_string}'\n"
+            f"No regex match found for '{regex_pattern}' in '{version_string}'\n"
         )
         return ""
 
