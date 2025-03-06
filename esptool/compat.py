@@ -44,7 +44,6 @@ __docformat__ = "javadoc"
 
 import sys, array
 
-Python = 3
 
 def asbytes(s):
     if isinstance(s, bytes):
