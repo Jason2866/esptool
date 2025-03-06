@@ -41,20 +41,20 @@ This example demonstrates writing two binary files using high-level commands:
 
 .. code-block:: python
 
-    from esptool.cmds import detect_chip, attach_flash, reset_chip, write_flash
+    from esptool.cmds import detect_chip, attach_flash, reset_chip, run_stub, write_flash
 
     PORT = "/dev/ttyACM0"
     BOOTLOADER = "bootloader.bin"
     FIRMWARE = "firmware.bin"
 
     with detect_chip(PORT) as esp:
-        esp = esp.run_stub()  # Skip this line to avoid running the stub flasher
+        esp = run_stub(esp)  # Skip this line to avoid running the stub flasher
         attach_flash(esp)  # Attach the flash memory chip, required for flash operations
         with open(BOOTLOADER, "rb") as bl_file, open(FIRMWARE, "rb") as fw_file:
             write_flash(esp, [(0, bl_file), (0x1000, fw_file)])  # Write the binary files
         reset_chip(esp, "hard_reset")  # Reset the chip
 
-- The ``esp`` object has to be replaced with the stub flasher object returned by ``esp.run_stub()`` when the stub flasher is activated. This step can be skipped if the stub flasher is not needed.
+- The ``esp`` object has to be replaced with the stub flasher object returned by ``run_stub(esp)`` when the stub flasher is activated. This step can be skipped if the stub flasher is not needed.
 - Running ``attach_flash(esp)`` is required for any flash-memory-related operations to work.
 - Using the ``esp`` object in a context manager ensures the port gets closed properly after the block is executed.
 
@@ -70,6 +70,7 @@ The following example demonstrates running a series of flash memory operations i
     flash_id,
     read_flash,
     reset_chip,
+    run_stub,
     verify_flash,
     write_flash,
     )
@@ -81,7 +82,7 @@ The following example demonstrates running a series of flash memory operations i
 
     with ESP32ROM(PORT) as esp:
         esp.connect()  # Connect to the ESP chip, needed when ESP32ROM is instantiated directly
-        esp = esp.run_stub()  # Run the stub loader (optional)
+        esp = run_stub(esp)  # Run the stub loader (optional)
         attach_flash(esp)  # Attach the flash memory chip, required for flash operations
         flash_id(esp)  # Print information about the flash chip
         erase_flash(esp)  # Erase the flash memory first
@@ -96,12 +97,48 @@ The following example demonstrates running a series of flash memory operations i
 
 ------------
 
+The Public API implements a custom ``ImageSource`` input type, which expands to ``str | bytes | IO[bytes]`` - a path to the firmware image file, an opened file-like object, or the image data as bytes.
+
+As output, the API returns a ``bytes`` object representing the binary image or writes the image to a file if the ``output`` parameter is provided.
+
+The following example converts an ELF file to a flashable binary, prints the image information, and flashes the image. The example demonstrates three different ways to achieve the same result, showcasing the flexibility of the API:
+
+.. code-block:: python
+
+    ELF = "firmware.elf"
+
+    # var 1 - Loading ELF from a file, not writing binary to a file
+    bin_file = elf2image(ELF, "esp32c3")
+    image_info(bin_file)
+    with detect_chip(PORT) as esp:
+        attach_flash(esp)
+        write_flash(esp, [(0, bin_file)])
+
+    # var 2 - Loading ELF from an opened file object, not writing binary to a file
+    with open(ELF, "rb") as elf_file, detect_chip(PORT) as esp:
+        bin_file = elf2image(elf_file, "esp32c3")
+        image_info(bin_file)
+        attach_flash(esp)
+        write_flash(esp, [(0, bin_file)])
+
+    # var 3 - Loading ELF from a file, writing binary to a file
+    elf2image(ELF, "esp32c3", "image.bin")
+    image_info("image.bin")
+    with detect_chip(PORT) as esp:
+        attach_flash(esp)
+        write_flash(esp, [(0, "image.bin")])
+
+
+------------
+
 **The following section provides a detailed reference for the public API functions.**
 
 Chip Control Operations
 """""""""""""""""""""""
 
 .. autofunction:: esptool.cmds.detect_chip
+
+.. autofunction:: esptool.cmds.run_stub
 
 .. autofunction:: esptool.cmds.load_ram
 
@@ -168,8 +205,6 @@ The following commands can run without the need for a connected chip:
 .. autofunction:: esptool.cmds.merge_bin
 
 .. autofunction:: esptool.cmds.image_info
-
-.. autofunction:: esptool.cmds.make_image
 
 ------------
 

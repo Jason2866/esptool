@@ -369,7 +369,7 @@ class TestFlashEncryption(EsptoolTestCase):
             pytest.skip("Valid encryption key already programmed, aborting the test")
 
         self.run_esptool(
-            "write_flash --encrypt --ignore-flash-encryption-efuse-setting "
+            "write_flash --encrypt --ignore-flash-enc-efuse "
             "0x10000 images/ram_helloworld/helloworld-esp32.bin"
         )
         self.run_esptool("read_flash 0x10000 192 images/read_encrypted_flash.bin")
@@ -408,7 +408,7 @@ class TestFlashEncryption(EsptoolTestCase):
             pytest.skip("Valid encryption key already programmed, aborting the test")
 
         self.run_esptool(
-            "write_flash --encrypt --ignore-flash-encryption-efuse-setting "
+            "write_flash --encrypt --ignore-flash-enc-efuse "
             "0x10000 images/ram_helloworld/helloworld-esp32_edit.bin"
         )
         self.run_esptool("read_flash 0x10000 192 images/read_encrypted_flash.bin")
@@ -643,7 +643,7 @@ class TestFlashing(EsptoolTestCase):
             "write_flash 0x10000 images/one_kb.bin 0x11000 images/zerolength.bin"
         )
         self.verify_readback(0x10000, 1024, "images/one_kb.bin")
-        assert "zerolength.bin is empty" in output
+        assert "'images/zerolength.bin' is empty" in output
 
     @pytest.mark.quick_test
     def test_single_byte(self):
@@ -674,7 +674,7 @@ class TestFlashing(EsptoolTestCase):
         )
         assert "Unexpected chip ID in image." in output
         assert "value was 9. Is this image for a different chip model?" in output
-        assert "images/esp32s3_header.bin is not an " in output
+        assert "'images/esp32s3_header.bin' is not an " in output
         assert "image. Use the force argument to flash anyway." in output
 
     @pytest.mark.skipif(
@@ -687,7 +687,7 @@ class TestFlashing(EsptoolTestCase):
         output = self.run_esptool_error(
             "write_flash 0x0 images/one_kb.bin 0x1000 images/esp32s3_header.bin"
         )
-        assert "images/esp32s3_header.bin requires chip revision 10" in output
+        assert "'images/esp32s3_header.bin' requires chip revision 10" in output
         assert "or higher (this chip is revision" in output
         assert "Use the force argument to flash anyway." in output
 
@@ -700,7 +700,7 @@ class TestFlashing(EsptoolTestCase):
             "write_flash 0x0 images/one_kb.bin 0x1000 images/esp32c3_header_min_rev.bin"
         )
         assert (
-            "images/esp32c3_header_min_rev.bin "
+            "'images/esp32c3_header_min_rev.bin' "
             "requires chip revision in range [v2.55 - max rev not set]" in output
         )
         assert "Use the force argument to flash anyway." in output
@@ -856,14 +856,14 @@ class TestFlashSizes(EsptoolTestCase):
         output = self.run_esptool_error(
             "write_flash -fs 1MB 0x280000 images/one_kb.bin"
         )
-        assert "File images/one_kb.bin" in output
+        assert "File 'images/one_kb.bin'" in output
         assert "will not fit" in output
 
     def test_write_no_compression_past_end_fails(self):
         output = self.run_esptool_error(
             "write_flash -u -fs 1MB 0x280000 images/one_kb.bin"
         )
-        assert "File images/one_kb.bin" in output
+        assert "File 'images/one_kb.bin'" in output
         assert "will not fit" in output
 
     @pytest.mark.skipif(
@@ -1534,39 +1534,6 @@ class TestReadWriteMemory(EsptoolTestCase):
 
 
 @pytest.mark.skipif(
-    arg_chip != "esp8266", reason="Make image option is supported only on ESP8266"
-)
-class TestMakeImage(EsptoolTestCase):
-    def verify_image(self, offset, length, image, compare_to):
-        with open(image, "rb") as f:
-            f.seek(offset)
-            rb = f.read(length)
-        with open(compare_to, "rb") as f:
-            ct = f.read()
-        if len(rb) != len(ct):
-            print(
-                f"WARNING: Expected length {len(ct)} doesn't match comparison {len(rb)}"
-            )
-        print(f"Readback {len(rb)} bytes")
-        self.diff(rb, ct)
-
-    def test_make_image(self):
-        output = self.run_esptool(
-            "make_image test"
-            " -a 0x0 -f images/sector.bin -a 0x1000 -f images/fifty_kb.bin"
-        )
-        try:
-            assert "Successfully created ESP8266 image." in output
-            assert os.path.exists("test0x00000.bin")
-            self.verify_image(16, 4096, "test0x00000.bin", "images/sector.bin")
-            self.verify_image(
-                4096 + 24, 50 * 1024, "test0x00000.bin", "images/fifty_kb.bin"
-            )
-        finally:
-            os.remove("test0x00000.bin")
-
-
-@pytest.mark.skipif(
     "ESPTOOL_TEST_USB_OTG" in os.environ or arg_preload_port is not False,
     reason="Boot mode strapping pin pulled constantly low, "
     "can't reset out of bootloader",
@@ -1805,12 +1772,12 @@ class TestESPObjectOperations(EsptoolTestCase):
         image_info("images/bootloader_esp32.bin")
         with open("images/one_kb.bin", "rb") as input:
             try:
-                merge_bin([(0x0, input), (0x2000, input)], "output.bin", arg_chip)
+                merge_bin([(0x0, input), (0x2000, input)], arg_chip, "output.bin")
             finally:
                 os.remove("output.bin")
         version()
         output = fake_out.getvalue()
         assert "Detected image type: ESP32" in output
         assert "Checksum: 0x83 (valid)" in output
-        assert "Wrote 0x2000 bytes to file output.bin" in output
+        assert "Wrote 0x2400 bytes to file 'output.bin'" in output
         assert esptool.__version__ in output

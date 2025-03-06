@@ -153,3 +153,39 @@ The esptool ``v5`` has switched to using `Click <https://click.palletsprojects.c
 
 1. Remove the old shell completion code from your scripts and shell configuration files like ``.bashrc``, ``.zshrc``, ``.config/fish/config.fish``, etc.
 2. Follow the new shell completion setup instructions in the :ref:`shell-completion` section of the :ref:`installation <installation>` guide.
+
+``merge_bin`` ``--fill-flash-size`` Argument
+********************************************
+
+The ``--fill-flash-size`` option of the :ref:`merge_bin <merge-bin>` command has been renamed to ``--pad-to-size``. This change provides a more intuitive and descriptive name for the argument and is consistent with the naming scheme in other esptool image manipulation commands.
+
+**Migration Steps:**
+
+1. Rename the ``--fill-flash-size`` to ``--pad-to-size`` in any existing ``merge_bin`` commands in scripts/CI pipelines.
+
+``write_flash`` ``--ignore-flash-encryption-efuse-setting`` Argument
+********************************************************************
+
+The ``--ignore-flash-encryption-efuse-setting`` option of the :ref:`write_flash <write-flash>` command has been renamed to ``--ignore-flash-enc-efuse``. This change shortens the argument name to improve readability and consistency with other esptool options.
+
+**Migration Steps:**
+
+1. Rename the ``--ignore-flash-encryption-efuse-setting`` to ``--ignore-flash-enc-efuse`` in any existing ``write_flash`` commands in scripts/CI pipelines.
+
+``make_image`` Command Removal
+******************************
+
+The ``make_image`` command for the ESP8266 has been **removed in v5**. This command has been deprecated in favor of using **objcopy** (or other tools) to generate ELF images and then using ``elf2image`` to create the final ``.bin`` file.
+
+**Migration Steps:**
+
+1. Replace any ``make_image`` workflows with the recommended way of assembling firmware images using **objcopy** and ``elf2image``.
+
+Using Binary from GitHub Releases on Linux
+******************************************
+
+The ``esptool.py`` binary from GitHub Releases on Linux is now using Ubuntu 22.04 as the base image. That means the image is using ``glibc`` 2.35, which is not fully compatible with the ``glibc`` 2.28 from Ubuntu 20.04 (the base image for ``v4.*``).
+
+**Migration Steps:**
+
+1. Update your operating system to a newer version which bundles ``glibc`` 2.35 or later

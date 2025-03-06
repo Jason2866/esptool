@@ -15,7 +15,6 @@ __all__ = [
     "get_security_info",
     "image_info",
     "load_ram",
-    "make_image",
     "merge_bin",
     "read_flash",
     "read_flash_status",
@@ -24,6 +23,7 @@ __all__ = [
     "read_mem",
     "reset_chip",
     "run",
+    "run_stub",
     "verify_flash",
     "version",
     "write_flash",
@@ -54,7 +54,6 @@ from esptool.cmds import (
     get_security_info,
     image_info,
     load_ram,
-    make_image,
     merge_bin,
     read_flash,
     read_flash_status,
@@ -62,6 +61,7 @@ from esptool.cmds import (
     read_mem,
     reset_chip,
     run,
+    run_stub,
     verify_flash,
     version,
     write_flash,
@@ -121,7 +121,7 @@ click.rich_click.OPTION_GROUPS = {
             "name": "RAW options",
             "options": [
                 "--target-offset",
-                "--fill-flash-size",
+                "--pad-to-size",
             ],
         },
     ],
@@ -166,7 +166,6 @@ click.rich_click.COMMAND_GROUPS = {
                 "write_flash_status",
                 "read_flash_sfdp",
                 "chip_id",
-                "make_image",
                 "run",
                 "get_security_info",
             ],
@@ -449,36 +448,7 @@ def prepare_esp_object(ctx):
     ############################
 
     if not ctx.obj["no_stub"]:
-        if esp.secure_download_mode:
-            log.warning(
-                "Stub loader is not supported in Secure Download Mode, "
-                "it has been disabled. Set --no-stub to suppress this warning."
-            )
-        elif not esp.IS_STUB and esp.stub_is_disabled:
-            log.warning(
-                "Stub loader has been disabled for compatibility, "
-                "set --no-stub to suppress this warning."
-            )
-        elif esp.CHIP_NAME in [
-            "ESP32-H21",
-            "ESP32-H4",
-        ]:  # TODO: [ESP32H21] IDF-11509   [ESP32H4] IDF-12271
-            log.warning(
-                f"Stub loader is not yet supported on {esp.CHIP_NAME}, "
-                "it has been disabled. Set --no-stub to suppress this warning."
-            )
-        else:
-            try:
-                esp = esp.run_stub()
-            except Exception:
-                # The CH9102 bridge (PID: 0x55D4) can have issues on MacOS
-                if sys.platform == "darwin" and esp._get_pid() == 0x55D4:
-                    log.print()
-                    log.note(
-                        "If issues persist, "
-                        "try installing the WCH USB-to-Serial MacOS driver."
-                    )
-                raise
+        esp = run_stub(esp)
 
     # 4) Configure the baud rate and voltage regulator
     ##################################################
@@ -597,9 +567,9 @@ def write_mem_cli(ctx, address, value, mask):
     "filename, separated by space.",
 )
 @click.option(
-    "--ignore-flash-encryption-efuse-setting",
+    "--ignore-flash-enc-efuse",
     is_flag=True,
-    help="Ignore flash encryption efuse settings",
+    help="Ignore flash encryption eFuse settings",
 )
 @click.option(
     "--force",
@@ -657,37 +627,16 @@ def run_cli(ctx):
 @click.pass_context
 def image_info_cli(ctx, filename):
     """Dump headers from a binary file (bootloader or application)"""
-    image_info(filename, ctx.obj["chip"])
-
-
-@cli.command("make_image")
-@click.argument("output", type=click.Path())
-@click.option(
-    "--segfile",
-    "-f",
-    multiple=True,
-    type=click.Path(exists=True),
-    help="Segment input file",
-)
-@click.option(
-    "--segaddr", "-a", multiple=True, type=AnyIntType(), help="Segment base address"
-)
-@click.option(
-    "--entrypoint", "-e", type=AnyIntType(), default=0, help="Address of entry point"
-)
-def make_image_cli(output, segfile, segaddr, entrypoint):
-    """Create an application image from binary files"""
-    make_image(segfile, segaddr, output, entrypoint)
+    image_info(filename, chip=None if ctx.obj["chip"] == "auto" else ctx.obj["chip"])
 
 
 @cli.command("elf2image")
-@click.argument("input", type=click.Path(exists=True))
+@click.argument("filename", type=click.Path(exists=True))
 @click.option(
     "--output",
     "-o",
     type=str,
-    help="Output filename prefix (for version 1 image), or filename (for version 2 "
-    "single image)",
+    help="Output filename or filename prefix (for ESP8266 V1 image)",
 )
 @click.option(
     "--version",
@@ -772,10 +721,16 @@ def make_image_cli(output, segfile, segaddr, entrypoint):
 )
 @add_spi_flash_options(allow_keep=False, auto_detect=False)
 @click.pass_context
-def elf2image_cli(ctx, **kwargs):
+def elf2image_cli(ctx, filename, **kwargs):
     """Create an application image from ELF file"""
+    if ctx.obj["chip"] == "auto":
+        raise FatalError(
+            f"Specify the --chip argument (choose from {', '.join(CHIP_LIST)})"
+        )
     append_digest = not kwargs.pop("dont_append_digest", False)
-    elf2image(chip=ctx.obj["chip"], append_digest=append_digest, **kwargs)
+    output = kwargs.pop("output", None)
+    output = "auto" if output is None else output
+    elf2image(filename, ctx.obj["chip"], output, append_digest=append_digest, **kwargs)
 
 
 @cli.command("read_mac")
@@ -953,17 +908,21 @@ def read_flash_sfdp_cli(ctx, address, bytes, **kwargs):
     help="Target offset where the output file will be flashed",
 )
 @click.option(  # RAW only
-    "--fill-flash-size",
+    "--pad-to-size",
     type=click.Choice(
         ["256KB", "512KB", "1MB", "2MB", "4MB", "8MB", "16MB", "32MB", "64MB", "128MB"]
     ),
-    help="If set, the final binary file will be padded with FF bytes up to this flash "
-    "size.",
+    help="If set, the final binary file will be padded with 0xFF bytes up to this flash"
+    " size.",
 )
 @add_spi_flash_options(allow_keep=True, auto_detect=False)
 @click.pass_context
 def merge_bin_cli(ctx, addr_filename, **kwargs):
     """Merge multiple raw binary files into a single file for later flashing"""
+    if ctx.obj["chip"] == "auto":
+        raise FatalError(
+            f"Specify the --chip argument (choose from {', '.join(CHIP_LIST)})"
+        )
     merge_bin(addr_filename, chip=ctx.obj["chip"], **kwargs)
 
 
