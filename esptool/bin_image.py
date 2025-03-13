@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2014-2022 Fredrik Ahlberg, Angus Gratton,
+# SPDX-FileCopyrightText: 2014-2025 Fredrik Ahlberg, Angus Gratton,
 # Espressif Systems (Shanghai) CO LTD, other contributors as noted.
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
@@ -13,26 +13,22 @@ import struct
 import tempfile
 from typing import IO, Optional, Tuple
 
-from intelhex import HexRecordError, IntelHex
+from esptool.intelhex import HexRecordError, IntelHex
 
 from .loader import ESPLoader
+from .logger import log
 from .targets import (
     ESP32C2ROM,
     ESP32C3ROM,
     ESP32C5ROM,
-    ESP32C5BETA3ROM,
-    ESP32C6BETAROM,
     ESP32C6ROM,
     ESP32C61ROM,
-    ESP32H2BETA1ROM,
-    ESP32H2BETA2ROM,
     ESP32H2ROM,
     ESP32H21ROM,
     ESP32H4ROM,
     ESP32P4ROM,
     ESP32ROM,
     ESP32S2ROM,
-    ESP32S3BETA2ROM,
     ESP32S3ROM,
     ESP8266ROM,
 )
@@ -83,17 +79,12 @@ def LoadFirmwareImage(chip, image_file):
             return {
                 "esp32": ESP32FirmwareImage,
                 "esp32s2": ESP32S2FirmwareImage,
-                "esp32s3beta2": ESP32S3BETA2FirmwareImage,
                 "esp32s3": ESP32S3FirmwareImage,
                 "esp32c3": ESP32C3FirmwareImage,
-                "esp32c6beta": ESP32C6BETAFirmwareImage,
-                "esp32h2beta1": ESP32H2BETA1FirmwareImage,
-                "esp32h2beta2": ESP32H2BETA2FirmwareImage,
                 "esp32c2": ESP32C2FirmwareImage,
                 "esp32c6": ESP32C6FirmwareImage,
                 "esp32c61": ESP32C61FirmwareImage,
                 "esp32c5": ESP32C5FirmwareImage,
-                "esp32c5beta3": ESP32C5BETA3FirmwareImage,
                 "esp32h2": ESP32H2FirmwareImage,
                 "esp32h21": ESP32H21FirmwareImage,
                 "esp32p4": ESP32P4FirmwareImage,
@@ -232,7 +223,7 @@ class BaseFirmwareImage(object):
     def warn_if_unusual_segment(self, offset, size, is_irom_segment):
         if not is_irom_segment:
             if offset > 0x40200000 or offset < 0x3FFE0000 or size > 65536:
-                print("WARNING: Suspicious segment 0x%x, length %d" % (offset, size))
+                log.warning(f"Suspicious segment 0x{offset:x}, length {size}")
 
     def maybe_patch_segment_data(self, f, segment_data):
         """
@@ -506,9 +497,8 @@ class ESP8266V2FirmwareImage(BaseFirmwareImage):
             if segments != self.IMAGE_V2_SEGMENT:
                 # segment count is not really segment count here,
                 # but we expect to see '4'
-                print(
-                    'Warning: V2 header has unexpected "segment" count %d (usually 4)'
-                    % segments
+                log.warning(
+                    f'V2 header has unexpected "segment" count {segments} (usually 4)'
                 )
 
             # irom segment comes before the second header
@@ -528,22 +518,19 @@ class ESP8266V2FirmwareImage(BaseFirmwareImage):
             segments = self.load_common_header(load_file, ESPLoader.ESP_IMAGE_MAGIC)
 
             if first_flash_mode != self.flash_mode:
-                print(
-                    "WARNING: Flash mode value in first header (0x%02x) disagrees "
-                    "with second (0x%02x). Using second value."
-                    % (first_flash_mode, self.flash_mode)
+                log.warning(
+                    f"Flash mode value in first header (0x{first_flash_mode:02x}) "
+                    f"disagrees with second (0x{self.flash_mode:02x}). Using second value."
                 )
             if first_flash_size_freq != self.flash_size_freq:
-                print(
-                    "WARNING: Flash size/freq value in first header (0x%02x) disagrees "
-                    "with second (0x%02x). Using second value."
-                    % (first_flash_size_freq, self.flash_size_freq)
+                log.warning(
+                    f"Flash size/freq value in first header (0x{first_flash_size_freq:02x}) "
+                    f"disagrees with second (0x{self.flash_size_freq:02x}). Using second value."
                 )
             if first_entrypoint != self.entrypoint:
-                print(
-                    "WARNING: Entrypoint address in first header (0x%08x) disagrees "
-                    "with second header (0x%08x). Using second value."
-                    % (first_entrypoint, self.entrypoint)
+                log.warning(
+                    f"Entrypoint address in first header (0x{first_entrypoint:08x}) "
+                    f"disagrees with second header (0x{self.entrypoint:08x}). Using second value."
                 )
 
             # load all the usual segments
@@ -918,12 +905,9 @@ class ESP32FirmwareImage(BaseFirmwareImage):
 
         self.chip_id = fields[4]
         if self.chip_id != self.ROM_LOADER.IMAGE_CHIP_ID:
-            print(
-                (
-                    "Unexpected chip id in image. Expected %d but value was %d. "
-                    "Is this image for a different chip model?"
-                )
-                % (self.ROM_LOADER.IMAGE_CHIP_ID, self.chip_id)
+            log.warning(
+                f"Unexpected chip ID in image. Expected {self.ROM_LOADER.IMAGE_CHIP_ID}"
+                f" but value was {self.chip_id}. Is this image for a different chip model?"
             )
 
         self.min_rev = fields[5]
@@ -1065,8 +1049,8 @@ class ESP8266V3FirmwareImage(ESP32FirmwareImage):
 
         # remaining fields in the middle should all be zero
         if any(f for f in fields[4:15] if f != 0):
-            print(
-                "Warning: some reserved header fields have non-zero values. "
+            log.warning(
+                "Some reserved header fields have non-zero values. "
                 "This image may be from a newer esptool.py?"
             )
 
@@ -1081,15 +1065,6 @@ class ESP32S2FirmwareImage(ESP32FirmwareImage):
 
 
 ESP32S2ROM.BOOTLOADER_IMAGE = ESP32S2FirmwareImage
-
-
-class ESP32S3BETA2FirmwareImage(ESP32FirmwareImage):
-    """ESP32S3 Firmware Image almost exactly the same as ESP32FirmwareImage"""
-
-    ROM_LOADER = ESP32S3BETA2ROM
-
-
-ESP32S3BETA2ROM.BOOTLOADER_IMAGE = ESP32S3BETA2FirmwareImage
 
 
 class ESP32S3FirmwareImage(ESP32FirmwareImage):
@@ -1108,33 +1083,6 @@ class ESP32C3FirmwareImage(ESP32FirmwareImage):
 
 
 ESP32C3ROM.BOOTLOADER_IMAGE = ESP32C3FirmwareImage
-
-
-class ESP32C6BETAFirmwareImage(ESP32FirmwareImage):
-    """ESP32C6 Firmware Image almost exactly the same as ESP32FirmwareImage"""
-
-    ROM_LOADER = ESP32C6BETAROM
-
-
-ESP32C6BETAROM.BOOTLOADER_IMAGE = ESP32C6BETAFirmwareImage
-
-
-class ESP32H2BETA1FirmwareImage(ESP32FirmwareImage):
-    """ESP32H2 Firmware Image almost exactly the same as ESP32FirmwareImage"""
-
-    ROM_LOADER = ESP32H2BETA1ROM
-
-
-ESP32H2BETA1ROM.BOOTLOADER_IMAGE = ESP32H2BETA1FirmwareImage
-
-
-class ESP32H2BETA2FirmwareImage(ESP32FirmwareImage):
-    """ESP32H2 Firmware Image almost exactly the same as ESP32FirmwareImage"""
-
-    ROM_LOADER = ESP32H2BETA2ROM
-
-
-ESP32H2BETA2ROM.BOOTLOADER_IMAGE = ESP32H2BETA2FirmwareImage
 
 
 class ESP32C2FirmwareImage(ESP32FirmwareImage):
@@ -1173,24 +1121,6 @@ class ESP32C5FirmwareImage(ESP32FirmwareImage):
 
 
 ESP32C5ROM.BOOTLOADER_IMAGE = ESP32C5FirmwareImage
-
-
-class ESP32C5BETA3FirmwareImage(ESP32C6FirmwareImage):
-    """ESP32C5BETA3 Firmware Image almost exactly the same as ESP32C6FirmwareImage"""
-
-    ROM_LOADER = ESP32C5BETA3ROM
-
-
-ESP32C5BETA3ROM.BOOTLOADER_IMAGE = ESP32C5BETA3FirmwareImage
-
-
-class ESP32H4FirmwareImage(ESP32FirmwareImage):
-    """ESP32H4 Firmware Image almost exactly the same as ESP32FirmwareImage"""
-
-    ROM_LOADER = ESP32H4ROM
-
-
-ESP32H4ROM.BOOTLOADER_IMAGE = ESP32H4FirmwareImage
 
 
 class ESP32P4FirmwareImage(ESP32FirmwareImage):
@@ -1323,9 +1253,7 @@ class ELFFile(object):
             shstrndx * self.LEN_SEC_HEADER
         )
         if sec_type != ELFFile.SEC_TYPE_STRTAB:
-            print(
-                "WARNING: ELF file has incorrect STRTAB section type 0x%02x" % sec_type
-            )
+            log.warning(f"ELF file has incorrect STRTAB section type 0x{sec_type:02x}")
         f.seek(sec_offs)
         string_table = f.read(sec_size)
 
