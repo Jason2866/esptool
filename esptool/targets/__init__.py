@@ -25,6 +25,7 @@ CHIP_DEFS = {
     "esp32h2": ESP32H2ROM,
     "esp32h21": ESP32H21ROM,
     "esp32p4": ESP32P4ROM,
+    "esp32h4": ESP32H4ROM,
 }
 
 CHIP_LIST = list(CHIP_DEFS.keys())

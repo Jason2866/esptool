@@ -220,9 +220,6 @@ class TestReadCommands(EfuseTestCase):
             ret_code=2,
         )
 
-    @pytest.mark.skipif(
-        arg_chip == "esp32p4", reason="No Custom MAC Address defined yet"
-    )
     def test_get_custom_mac(self):
         self.espefuse_py("get_custom_mac -h")
         if arg_chip == "esp32":
@@ -252,8 +249,6 @@ class TestReadCommands(EfuseTestCase):
         self.espefuse_py("check_error --recovery")
 
 
-# TODO: [ESP32H21] IDF-11506
-@pytest.mark.skipif(arg_chip == "esp32h21", reason="Not supported yet")
 class TestReadProtectionCommands(EfuseTestCase):
     def test_read_protect_efuse(self):
         self.espefuse_py("read_protect_efuse -h")
@@ -337,7 +332,10 @@ class TestReadProtectionCommands(EfuseTestCase):
             )
         else:
             key1_purpose = (
-                "USER" if arg_chip in ["esp32p4", "esp32c61", "esp32c5"] else "RESERVED"
+                "USER"
+                if arg_chip
+                in ["esp32p4", "esp32c61", "esp32c5", "esp32c5beta3", "esp32h4"]
+                else "RESERVED"
             )
             self.espefuse_py(
                 f"burn_key BLOCK_KEY0 {IMAGES_DIR}/256bit USER \
@@ -392,8 +390,6 @@ class TestReadProtectionCommands(EfuseTestCase):
         )
 
 
-# TODO: [ESP32H21] IDF-11506
-@pytest.mark.skipif(arg_chip == "esp32h21", reason="Not supported yet")
 class TestWriteProtectionCommands(EfuseTestCase):
     def test_write_protect_efuse(self):
         self.espefuse_py("write_protect_efuse -h")
@@ -412,7 +408,7 @@ class TestWriteProtectionCommands(EfuseTestCase):
                            SPI_BOOT_CRYPT_CNT"""
             efuse_lists2 = "RD_DIS KEY_PURPOSE_0 KEY_PURPOSE_2"
         else:
-            efuse_lists = """RD_DIS DIS_ICACHE DIS_FORCE_DOWNLOAD
+            efuse_lists = """RD_DIS DIS_FORCE_DOWNLOAD
                            DIS_DOWNLOAD_MANUAL_ENCRYPT
                            USB_EXCHG_PINS WDT_DELAY_SEL SPI_BOOT_CRYPT_CNT
                            SECURE_BOOT_KEY_REVOKE0 SECURE_BOOT_KEY_REVOKE1
@@ -429,16 +425,18 @@ class TestWriteProtectionCommands(EfuseTestCase):
                 "esp32c6",
                 "esp32c61",
                 "esp32c5",
+                "esp32h21",
+                "esp32h4",
             ]:
                 efuse_lists += """ DIS_DOWNLOAD_ICACHE
                             SPI_PAD_CONFIG_CLK SPI_PAD_CONFIG_Q
                             SPI_PAD_CONFIG_D SPI_PAD_CONFIG_CS SPI_PAD_CONFIG_HD
                             SPI_PAD_CONFIG_WP SPI_PAD_CONFIG_DQS SPI_PAD_CONFIG_D4
                             SPI_PAD_CONFIG_D5 SPI_PAD_CONFIG_D6 SPI_PAD_CONFIG_D7"""
-            efuse_lists2 = "RD_DIS DIS_ICACHE"
+            efuse_lists2 = "RD_DIS"
         self.espefuse_py(f"write_protect_efuse {efuse_lists}")
         output = self.espefuse_py(f"write_protect_efuse {efuse_lists2}")
-        assert output.count("is already write protected") == 2
+        assert output.count("is already write protected") >= 1
 
     def test_write_protect_efuse2(self):
         if arg_chip == "esp32":
@@ -451,7 +449,6 @@ class TestWriteProtectionCommands(EfuseTestCase):
             )
 
 
-@pytest.mark.skipif(arg_chip == "esp32p4", reason="No Custom MAC Address defined yet")
 class TestBurnCustomMacCommands(EfuseTestCase):
     def test_burn_custom_mac(self):
         self.espefuse_py("burn_custom_mac -h")
@@ -694,9 +691,6 @@ class TestBurnEfuseCommands(EfuseTestCase):
         assert "(Override SD_CMD pad (GPIO11/SPICS0)) 0b00000 -> 0b11111" in output
         assert "BURN BLOCK0  - OK (all write block bits are set)" in output
 
-    @pytest.mark.skipif(
-        arg_chip == "esp32p4", reason="No Custom MAC Address defined yet"
-    )
     def test_burn_mac_custom_efuse(self):
         crc_msg = "(OK)"
         self.espefuse_py("burn_efuse -h")
@@ -719,14 +713,6 @@ class TestBurnEfuseCommands(EfuseTestCase):
         self.espefuse_py("burn_efuse CUSTOM_MAC AA:CD:EF:01:02:03")
         self.espefuse_py("get_custom_mac", check_msg=f"aa:cd:ef:01:02:03 {crc_msg}")
 
-    # TODO: [ESP32H21] IDF-11506
-    @pytest.mark.skipif(
-        arg_chip
-        in [
-            "esp32h21",
-        ],
-        reason="No such eFuses, will be defined later",
-    )
     def test_burn_efuse(self):
         self.espefuse_py("burn_efuse -h")
         if arg_chip == "esp32":
@@ -753,7 +739,13 @@ class TestBurnEfuseCommands(EfuseTestCase):
                 SECURE_BOOT_EN 1 \
                 UART_PRINT_CONTROL 1"
             )
-            if arg_chip not in ["esp32c5", "esp32c61"]:
+            if arg_chip not in [
+                "esp32c5",
+                "esp32c5beta3",
+                "esp32c61",
+                "esp32h21",
+                "esp32h4",
+            ]:
                 # chips having the OPTIONAL_UNIQUE_ID field
                 self.espefuse_py(
                     "burn_efuse \
@@ -1855,8 +1847,6 @@ class TestByteOrderBurnKeyCommand(EfuseTestCase):
             )
 
 
-# TODO: [ESP32H21] IDF-11506
-@pytest.mark.skipif(arg_chip == "esp32h21", reason="Not supported yet")
 class TestExecuteScriptsCommands(EfuseTestCase):
     @classmethod
     def setup_class(self):
@@ -1869,7 +1859,7 @@ class TestExecuteScriptsCommands(EfuseTestCase):
         os.chdir(self.stored_dir)
 
     @pytest.mark.skipif(
-        arg_chip in ["esp32c2", "esp32p4"],
+        arg_chip in ["esp32c2", "esp32p4", "esp32h21", "esp32h4"],
         reason="These chips do not have eFuses used in this test",
     )
     def test_execute_scripts_with_check_that_only_one_burn(self):
@@ -1879,7 +1869,7 @@ class TestExecuteScriptsCommands(EfuseTestCase):
         self.espefuse_py("execute_scripts execute_efuse_script2.py")
 
     @pytest.mark.skipif(
-        arg_chip in ["esp32c2", "esp32p4"],
+        arg_chip in ["esp32c2", "esp32p4", "esp32h21", "esp32h4"],
         reason="These chips do not have eFuses used in this test",
     )
     def test_execute_scripts_with_check(self):

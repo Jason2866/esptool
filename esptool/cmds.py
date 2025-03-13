@@ -11,7 +11,6 @@ import sys
 import time
 import zlib
 import itertools
-import re
 
 from esptool.intelhex import IntelHex
 from serial import SerialException
@@ -763,8 +762,245 @@ def write_flash(esp, args):
             esp.flash_finish(False)
 
 
+def _parse_app_info(app_info_segment):
+    """
+    Check if correct magic word is present in the app_info and parse the app_info struct
+    """
+    app_info = app_info_segment[:256]
+    # More info about the app_info struct can be found at:
+    # https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description
+    APP_DESC_STRUCT_FMT = "<II" + "8s" + "32s32s16s16s32s32sHHB" + "3s" + "72s"
+    (
+        magic_word,
+        secure_version,
+        reserv1,
+        version,
+        project_name,
+        time,
+        date,
+        idf_ver,
+        app_elf_sha256,
+        min_efuse_blk_rev_full,
+        max_efuse_blk_rev_full,
+        mmu_page_size,
+        reserv3,
+        reserv2,
+    ) = struct.unpack(APP_DESC_STRUCT_FMT, app_info)
+
+    if magic_word != 0xABCD5432:
+        return None
+
+    return {
+        "magic_word": magic_word,
+        "secure_version": secure_version,
+        "reserv1": reserv1,
+        "version": version.decode("utf-8"),
+        "project_name": project_name.decode("utf-8"),
+        "time": time.decode("utf-8"),
+        "date": date.decode("utf-8"),
+        "idf_ver": idf_ver.decode("utf-8"),
+        "app_elf_sha256": hexify(app_elf_sha256, uppercase=False),
+        "min_efuse_blk_rev_full": f"{min_efuse_blk_rev_full // 100}.{min_efuse_blk_rev_full % 100}",
+        "max_efuse_blk_rev_full": f"{max_efuse_blk_rev_full // 100}.{max_efuse_blk_rev_full % 100}",
+        "mmu_page_size": f"{2 ** mmu_page_size // 1024} KB"
+        if mmu_page_size != 0
+        else None,
+        "reserv3": reserv3,
+        "reserv2": reserv2,
+    }
+
+
 def image_info(args):
-    log.print(f"File size: {get_file_size(args.filename)} (bytes)")
+    def v2():
+        def get_key_from_value(dict, val):
+            """Get key from value in dictionary"""
+            for key, value in dict.items():
+                if value == val:
+                    return key
+            return None
+
+        print()
+        title = "{} image header".format(args.chip.upper())
+        print(title)
+        print("=" * len(title))
+        print("Image version: {}".format(image.version))
+        print(
+            "Entry point: {:#8x}".format(image.entrypoint)
+            if image.entrypoint != 0
+            else "Entry point not set"
+        )
+
+        print("Segments: {}".format(len(image.segments)))
+
+        # Flash size
+        flash_s_bits = image.flash_size_freq & 0xF0  # high four bits
+        flash_s = get_key_from_value(image.ROM_LOADER.FLASH_SIZES, flash_s_bits)
+        print(
+            "Flash size: {}".format(flash_s)
+            if flash_s is not None
+            else "WARNING: Invalid flash size ({:#02x})".format(flash_s_bits)
+        )
+
+        # Flash frequency
+        flash_fr_bits = image.flash_size_freq & 0x0F  # low four bits
+        flash_fr = get_key_from_value(image.ROM_LOADER.FLASH_FREQUENCY, flash_fr_bits)
+        print(
+            "Flash freq: {}".format(flash_fr)
+            if flash_fr is not None
+            else "WARNING: Invalid flash frequency ({:#02x})".format(flash_fr_bits)
+        )
+
+        # Flash mode
+        flash_mode = get_key_from_value(FLASH_MODES, image.flash_mode)
+        print(
+            "Flash mode: {}".format(flash_mode.upper())
+            if flash_mode is not None
+            else "WARNING: Invalid flash mode ({})".format(image.flash_mode)
+        )
+
+        # Extended header (ESP32 and later only)
+        if args.chip != "esp8266":
+            print()
+            title = "{} extended image header".format(args.chip.upper())
+            print(title)
+            print("=" * len(title))
+            print(
+                f"WP pin: {image.wp_pin:#02x}",
+                *["(disabled)"] if image.wp_pin == image.WP_PIN_DISABLED else [],
+            )
+            print(
+                "Flash pins drive settings: "
+                "clk_drv: {:#02x}, q_drv: {:#02x}, d_drv: {:#02x}, "
+                "cs0_drv: {:#02x}, hd_drv: {:#02x}, wp_drv: {:#02x}".format(
+                    image.clk_drv,
+                    image.q_drv,
+                    image.d_drv,
+                    image.cs_drv,
+                    image.hd_drv,
+                    image.wp_drv,
+                )
+            )
+            try:
+                chip = next(
+                    chip
+                    for chip in CHIP_DEFS.values()
+                    if getattr(chip, "IMAGE_CHIP_ID", None) == image.chip_id
+                )
+                print(f"Chip ID: {image.chip_id} ({chip.CHIP_NAME})")
+            except StopIteration:
+                print(f"Chip ID: {image.chip_id} (Unknown ID)")
+            print(
+                "Minimal chip revision: "
+                f"v{image.min_rev_full // 100}.{image.min_rev_full % 100}, "
+                f"(legacy min_rev = {image.min_rev})"
+            )
+            print(
+                "Maximal chip revision: "
+                f"v{image.max_rev_full // 100}.{image.max_rev_full % 100}"
+            )
+        print()
+
+        # Segments overview
+        title = "Segments information"
+        print(title)
+        print("=" * len(title))
+        headers_str = "{:>7}  {:>7}  {:>10}  {:>10}  {:10}"
+        print(
+            headers_str.format(
+                "Segment", "Length", "Load addr", "File offs", "Memory types"
+            )
+        )
+        print(
+            "{}  {}  {}  {}  {}".format("-" * 7, "-" * 7, "-" * 10, "-" * 10, "-" * 12)
+        )
+        format_str = "{:7}  {:#07x}  {:#010x}  {:#010x}  {}"
+        app_desc_seg = None
+        bootloader_desc = None
+        for idx, seg in enumerate(image.segments):
+            segs = seg.get_memory_type(image)
+            seg_name = ", ".join(segs)
+            # The DROM segment starts with the esp_app_desc_t struct
+            if "DROM" in segs and app_desc_seg is None:
+                app_desc_seg = seg.data[:256]
+            elif "DRAM" in segs:
+                # The DRAM segment starts with the esp_bootloader_desc_t struct
+                if len(seg.data) >= 80:
+                    bootloader_desc = seg.data[:80]
+            print(
+                format_str.format(idx, len(seg.data), seg.addr, seg.file_offs, seg_name)
+            )
+        print()
+
+        # Footer
+        title = f"{args.chip.upper()} image footer"
+        print(title)
+        print("=" * len(title))
+        calc_checksum = image.calculate_checksum()
+        print(
+            "Checksum: {:#02x} ({})".format(
+                image.checksum,
+                (
+                    "valid"
+                    if image.checksum == calc_checksum
+                    else "invalid - calculated {:02x}".format(calc_checksum)
+                ),
+            )
+        )
+        try:
+            digest_msg = "Not appended"
+            if image.append_digest:
+                is_valid = image.stored_digest == image.calc_digest
+                digest_msg = "{} ({})".format(
+                    hexify(image.calc_digest, uppercase=False),
+                    "valid" if is_valid else "invalid",
+                )
+                print("Validation hash: {}".format(digest_msg))
+        except AttributeError:
+            pass  # ESP8266 image has no append_digest field
+
+        if app_desc_seg:
+            app_desc = _parse_app_info(app_desc_seg)
+            if app_desc:
+                print()
+                title = "Application information"
+                print(title)
+                print("=" * len(title))
+                print(f'Project name: {app_desc["project_name"]}')
+                print(f'App version: {app_desc["version"]}')
+                print(f'Compile time: {app_desc["date"]} {app_desc["time"]}')
+                print(f"ELF file SHA256: {app_desc['app_elf_sha256']}")
+                print(f'ESP-IDF: {app_desc["idf_ver"]}')
+                print(
+                    f"Minimal eFuse block revision: {app_desc['min_efuse_blk_rev_full']}"
+                )
+                print(
+                    f"Maximal eFuse block revision: {app_desc['max_efuse_blk_rev_full']}"
+                )
+                if app_desc["mmu_page_size"]:
+                    print(f"MMU page size: {app_desc['mmu_page_size']}")
+                print(f"Secure version: {app_desc['secure_version']}")
+
+        elif bootloader_desc:
+            BOOTLOADER_DESC_STRUCT_FMT = "<B" + "3s" + "I32s24s" + "16s"
+            (
+                magic_byte,
+                reserved,
+                version,
+                idf_ver,
+                date_time,
+                reserved2,
+            ) = struct.unpack(BOOTLOADER_DESC_STRUCT_FMT, bootloader_desc)
+
+            if magic_byte == 80:
+                print()
+                title = "Bootloader information"
+                print(title)
+                print("=" * len(title))
+                print(f"Bootloader version: {version}")
+                print(f'ESP-IDF: {idf_ver.decode("utf-8")}')
+                print(f'Compile time: {date_time.decode("utf-8")}')
+
+    print(f"File size: {get_file_size(args.filename)} (bytes)")
     with open(args.filename, "rb") as f:
         # magic number
         try:
@@ -1064,6 +1300,39 @@ def elf2image(args):
 
     if args.flash_mmu_page_size:
         image.set_mmu_page_size(flash_size_bytes(args.flash_mmu_page_size))
+    else:
+        appdesc_seg = None
+        for seg in e.sections:
+            if ".flash.appdesc" in seg.name:
+                appdesc_seg = seg
+                break
+        # If ELF file contains app description segment, which is in flash memory (RAM build has it too, but does not have MMU page size) and chip has configurable MMU page size.
+        if (
+            appdesc_seg
+            and image.is_flash_addr(appdesc_seg.addr)
+            and image.MMU_PAGE_SIZE_CONF
+        ):
+            app_desc = _parse_app_info(appdesc_seg.data)
+            if app_desc:
+                # MMU page size is specified in app description segment since ESP-IDF v5.4
+                if app_desc["mmu_page_size"]:
+                    image.set_mmu_page_size(flash_size_bytes(app_desc["mmu_page_size"]))
+                # Try to set the correct MMU page size based on the app description starting address which,
+                # without image + extended header (24 bytes) and segment header (8 bytes), should be aligned to MMU page size.
+                else:
+                    for mmu_page_size in reversed(image.MMU_PAGE_SIZE_CONF):
+                        if (appdesc_seg.addr - 24 - 8) % mmu_page_size == 0:
+                            image.set_mmu_page_size(mmu_page_size)
+                            print(
+                                f"MMU page size not specified, set to {image.IROM_ALIGN // 1024} KB"
+                            )
+                            break
+                    else:
+                        print(
+                            "Warning: App description segment is not aligned to MMU page size, "
+                            "probably linker script issue or wrong MMU page size. "
+                            "Try to set MMU page size parameter manually."
+                        )
 
     # ELFSection is a subclass of ImageSegment, so can use interchangeably
     image.segments = e.segments if args.use_segments else e.sections
@@ -1075,6 +1344,14 @@ def elf2image(args):
     if args.elf_sha256_offset:
         image.elf_sha256 = e.sha256()
         image.elf_sha256_offset = args.elf_sha256_offset
+    else:
+        # If ELF file contains an app_desc section and it is in flash,
+        # put the SHA256 digest at correct offset.
+        # If it is flash build, it should always be 0xB0.
+        appdesc_segs = [seg for seg in image.segments if ".flash.appdesc" in seg.name]
+        if appdesc_segs and image.is_flash_addr(appdesc_segs[0].addr):
+            image.elf_sha256 = e.sha256()
+            image.elf_sha256_offset = 0xB0
 
     if args.ram_only_header:
         log.print(
