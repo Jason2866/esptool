@@ -21,8 +21,6 @@ from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa, utils
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.utils import int_to_bytes
 
-from esptool.logger import log
-
 import ecdsa
 
 import esptool
@@ -1923,21 +1921,18 @@ def _main():
     try:
         main()
     except esptool.FatalError as e:
-        log.error(f"\nA fatal error occurred: {e}")
+        print("\nA fatal error occurred: %s" % e)
         sys.exit(2)
     except ValueError as e:
         try:
             if [arg for arg in e.args if "Could not deserialize key data." in arg]:
-                log.error(
+                print(
                     "Note: This error originates from the cryptography module. "
                     "It is likely not a problem with espsecure, "
                     "please make sure you are using a compatible OpenSSL backend."
                 )
         finally:
             raise
-    except KeyboardInterrupt:
-        log.error("KeyboardInterrupt: Run cancelled by user.")
-        sys.exit(2)
 
 
 if __name__ == "__main__":
