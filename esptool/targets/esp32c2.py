@@ -78,10 +78,13 @@ class ESP32C2ROM(ESP32C3ROM):
         chip_name = {
             0: "ESP32-C2",
             1: "ESP32-C2",
-        }.get(self.get_pkg_version(), "unknown ESP32-C2")
+        }.get(self.get_pkg_version(), "Unknown ESP32-C2")
         major_rev = self.get_major_chip_version()
         minor_rev = self.get_minor_chip_version()
         return f"{chip_name} (revision v{major_rev}.{minor_rev})"
+
+    def get_chip_features(self):
+        return ["Wi-Fi", "BT 5 (LE)", "Single Core", "120MHz"]
 
     def get_minor_chip_version(self):
         num_word = 1
@@ -116,9 +119,10 @@ class ESP32C2ROM(ESP32C3ROM):
             # a 26 MHz XTAL.
             false_rom_baud = baud * 40 // 26
 
-            log.print(f"Changing baud rate to {baud}")
+            log.print(f"Changing baud rate to {baud}...")
             self.command(
-                self.ESP_CHANGE_BAUDRATE, struct.pack("<II", false_rom_baud, 0)
+                self.ESP_CMDS["CHANGE_BAUDRATE"],
+                struct.pack("<II", false_rom_baud, 0),
             )
             log.print("Changed.")
             self._set_port_baudrate(baud)

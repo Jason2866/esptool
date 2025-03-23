@@ -232,12 +232,12 @@ class ESP32ROM(ESPLoader):
             5: "ESP32-PICO-V3" if rev3 else "ESP32-PICO-D4",
             6: "ESP32-PICO-V3-02",
             7: "ESP32-D0WDR2-V3",
-        }.get(pkg_version, "unknown ESP32")
+        }.get(pkg_version, "Unknown ESP32")
 
         return f"{chip_name} (revision v{major_rev}.{minor_rev})"
 
     def get_chip_features(self):
-        features = ["WiFi"]
+        features = ["Wi-Fi"]
         word3 = self.read_efuse(3)
 
         # names of variables in this section are lowercase
@@ -250,9 +250,9 @@ class ESP32ROM(ESPLoader):
 
         chip_ver_dis_app_cpu = word3 & (1 << 0)
         if chip_ver_dis_app_cpu:
-            features += ["Single Core"]
+            features += ["Single Core + LP Core"]
         else:
-            features += ["Dual Core"]
+            features += ["Dual Core + LP Core"]
 
         chip_cpu_freq_rated = word3 & (1 << 13)
         if chip_cpu_freq_rated:
@@ -272,7 +272,7 @@ class ESP32ROM(ESPLoader):
         word4 = self.read_efuse(4)
         adc_vref = (word4 >> 8) & 0x1F
         if adc_vref:
-            features += ["VRef calibration in efuse"]
+            features += ["Vref calibration in eFuse"]
 
         blk3_part_res = word3 >> 14 & 0x1
         if blk3_part_res:
@@ -357,7 +357,7 @@ class ESP32ROM(ESPLoader):
             strap_reg &= self.GPIO_STRAP_VDDSPI_MASK
             voltage = "1.8V" if strap_reg else "3.3V"
             source = "a strapping pin"
-        log.print(f"Flash voltage set by {source} to {voltage}")
+        log.print(f"Flash voltage set by {source}: {voltage}")
 
     def override_vddsdio(self, new_voltage):
         new_voltage = new_voltage.upper()
@@ -381,7 +381,7 @@ class ESP32ROM(ESPLoader):
                 | self.RTC_CNTL_DREFL_SDIO_M
             )  # boost voltage
         self.write_reg(self.RTC_CNTL_SDIO_CONF_REG, reg_val)
-        log.print(f"VDDSDIO regulator set to {new_voltage}")
+        log.print(f"VDDSDIO regulator set to {new_voltage}.")
 
     def read_flash_slow(self, offset, length, progress_fn):
         BLOCK_LEN = 64  # ROM read limit per command (this limit is why it's so slow)
@@ -392,11 +392,11 @@ class ESP32ROM(ESPLoader):
             try:
                 r = self.check_command(
                     "read flash block",
-                    self.ESP_READ_FLASH_SLOW,
+                    self.ESP_CMDS["READ_FLASH_SLOW"],
                     struct.pack("<II", offset + len(data), block_len),
                 )
             except FatalError:
-                log.note("Consider specifying flash size using flash size argument")
+                log.note("Consider specifying the flash size argument.")
                 raise
             if len(r) < block_len:
                 raise FatalError(
@@ -407,7 +407,7 @@ class ESP32ROM(ESPLoader):
             # regardless of how many bytes were actually read from flash
             data += r[:block_len]
             if progress_fn and (len(data) % 1024 == 0 or len(data) == length):
-                progress_fn(len(data), length)
+                progress_fn(len(data), length, offset)
         return data
 
     def get_rom_cal_crystal_freq(self):
@@ -431,8 +431,10 @@ class ESP32ROM(ESPLoader):
         valid_freq = 40000000 if rom_calculated_freq > 33000000 else 26000000
         false_rom_baud = int(baud * rom_calculated_freq // valid_freq)
 
-        log.print(f"Changing baud rate to {baud}")
-        self.command(self.ESP_CHANGE_BAUDRATE, struct.pack("<II", false_rom_baud, 0))
+        log.print(f"Changing baud rate to {baud}...")
+        self.command(
+            self.ESP_CMDS["CHANGE_BAUDRATE"], struct.pack("<II", false_rom_baud, 0)
+        )
         log.print("Changed.")
         self._set_port_baudrate(baud)
         time.sleep(0.05)  # get rid of garbage sent during baud rate change

@@ -194,7 +194,7 @@ class ESP32S3ROM(ESP32ROM):
         chip_name = {
             0: "ESP32-S3 (QFN56)",
             1: "ESP32-S3-PICO-1 (LGA56)",
-        }.get(pkg_version, "unknown ESP32-S3")
+        }.get(pkg_version, "Unknown ESP32-S3")
 
         return f"{chip_name} (revision v{major_rev}.{minor_rev})"
 
@@ -222,7 +222,7 @@ class ESP32S3ROM(ESP32ROM):
         return {1: "AP_3v3", 2: "AP_1v8"}.get(vendor_id, "")
 
     def get_chip_features(self):
-        features = ["WiFi", "BLE"]
+        features = ["Wi-Fi", "BT 5 (LE)", "Dual Core + LP Core", "240MHz"]
 
         flash = {
             0: None,

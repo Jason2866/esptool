@@ -109,10 +109,19 @@ class ESP32C5ROM(ESP32C6ROM):
     def get_chip_description(self):
         chip_name = {
             0: "ESP32-C5",
-        }.get(self.get_pkg_version(), "unknown ESP32-C5")
+        }.get(self.get_pkg_version(), "Unknown ESP32-C5")
         major_rev = self.get_major_chip_version()
         minor_rev = self.get_minor_chip_version()
         return f"{chip_name} (revision v{major_rev}.{minor_rev})"
+
+    def get_chip_features(self):
+        return [
+            "Wi-Fi 6 (dual-band)",
+            "BT 5 (LE)",
+            "IEEE802.15.4",
+            "Single Core + LP Core",
+            "240MHz",
+        ]
 
     def get_crystal_freq(self):
         # The crystal detection algorithm of ESP32/ESP8266
@@ -133,7 +142,7 @@ class ESP32C5ROM(ESP32C6ROM):
             crystal_freq_detect = self.get_crystal_freq()
             log.print(
                 f"ROM expects crystal freq: {crystal_freq_rom_expect} MHz, "
-                f"detected {crystal_freq_detect} MHz"
+                f"detected {crystal_freq_detect} MHz."
             )
             baud_rate = baud
             # If detect the XTAL is 48MHz, but the ROM code expects it to be 40MHz
@@ -146,8 +155,10 @@ class ESP32C5ROM(ESP32C6ROM):
                 ESPLoader.change_baud(self, baud_rate)
                 return
 
-            log.print(f"Changing baud rate to {baud_rate}")
-            self.command(self.ESP_CHANGE_BAUDRATE, struct.pack("<II", baud_rate, 0))
+            log.print(f"Changing baud rate to {baud_rate}...")
+            self.command(
+                self.ESP_CMDS["CHANGE_BAUDRATE"], struct.pack("<II", baud_rate, 0)
+            )
             log.print("Changed.")
             self._set_port_baudrate(baud)
             time.sleep(0.05)  # get rid of garbage sent during baud rate change

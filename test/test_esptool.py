@@ -720,7 +720,7 @@ class TestFlashing(EsptoolTestCase):
     @pytest.mark.quick_test
     def test_erase_before_write(self):
         output = self.run_esptool("write-flash --erase-all 0x0 images/one_kb.bin")
-        assert "Chip erase completed successfully" in output
+        assert "Flash memory erased successfully" in output
         assert "Hash of data verified" in output
 
     @pytest.mark.quick_test
@@ -803,7 +803,7 @@ class TestFlashing(EsptoolTestCase):
         output = self.run_esptool(
             "--before no_reset --after no_reset_stub flash-id", preload=False
         )
-        assert "Stub is already running. No upload is necessary." in output
+        assert "Stub flasher is already running. No upload is necessary." in output
 
         sleep(10)  # Wait if RTC WDT triggers
 
@@ -952,15 +952,23 @@ class TestFlashDetection(EsptoolTestCase):
         """Test trace functionality on flash detection, running without stub"""
         res = self.run_esptool("--trace flash-id")
         # read register command
-        assert re.search(r"TRACE \+\d.\d{3} command op=0x0a .*", res) is not None
+        assert (
+            re.search(r"TRACE \+\d.\d{3}   --- Cmd READ_REG \(0x0a\) .*", res)
+            is not None
+        )
         # write register command
-        assert re.search(r"TRACE \+\d.\d{3} command op=0x09 .*", res) is not None
-        assert re.search(r"TRACE \+\d.\d{3} Read \d* bytes: .*", res) is not None
-        assert re.search(r"TRACE \+\d.\d{3} Write \d* bytes: .*", res) is not None
-        assert re.search(r"TRACE \+\d.\d{3} Received full packet: .*", res) is not None
+        assert (
+            re.search(r"TRACE \+\d.\d{3}   --- Cmd WRITE_REG \(0x09\) .*", res)
+            is not None
+        )
+        assert re.search(r"TRACE \+\d.\d{3}   Read \d* bytes:", res) is not None
+        assert re.search(r"TRACE \+\d.\d{3}   Write \d+ bytes:", res) is not None
+        assert (
+            re.search(r"TRACE \+\d.\d{3}   Received full packet: .*", res) is not None
+        )
         # flasher stub handshake
         assert (
-            re.search(r"TRACE \+\d.\d{3} Received full packet: 4f484149", res)
+            re.search(r"TRACE \+\d.\d{3}   Received full packet: 4f484149", res)
             is not None
         )
         assert "Manufacturer:" in res
@@ -986,9 +994,9 @@ class TestFlashDetection(EsptoolTestCase):
     def test_flash_sfdp(self):
         """Test manufacturer and device response of flash detection."""
         res = self.run_esptool("read-flash-sfdp 0 4")
-        assert "SFDP[0..3]: 53 46 44 50" in res
+        assert "SFDP[0..3]: 0x53 0x46 0x44 0x50" in res
         res = self.run_esptool("read-flash-sfdp 1 3")
-        assert "SFDP[1..3]: 46 44 50 " in res
+        assert "SFDP[1..3]: 0x46 0x44 0x50" in res
 
 
 @pytest.mark.skipif(
@@ -1137,8 +1145,8 @@ class TestVerifyCommand(EsptoolTestCase):
     def test_verify_failure(self):
         self.run_esptool("write-flash 0x6000 images/sector.bin")
         output = self.run_esptool_error("verify-flash --diff 0x6000 images/one_kb.bin")
-        assert "verify FAILED" in output
-        assert "first at 0x00006000" in output
+        assert "Verification failed:" in output
+        assert "first at 0x00006000:" in output
 
     def test_verify_unaligned_length(self):
         self.run_esptool("write-flash 0x0 images/not_4_byte_aligned.bin")
@@ -1169,7 +1177,8 @@ class TestMemoryOperations(EsptoolTestCase):
     @pytest.mark.quick_test
     def test_memory_dump(self):
         output = self.run_esptool("dump-mem 0x50000000 128 memout.bin")
-        assert "Successfully read 128 bytes" in output
+        assert "Dumped 128 bytes from 0x50000000" in output
+        assert "to 'memout.bin'" in output
         os.remove("memout.bin")
 
     def test_memory_write(self):
@@ -1349,9 +1358,9 @@ class TestBootloaderHeaderRewriteCases(EsptoolTestCase):
         )
         if arg_chip in ["esp8266", "esp32"]:
             # ESP8266 lacks this feature; ESP32 test image doesn't include it
-            assert "Flash params set to" in output
+            assert "Flash parameters set to" in output
         else:
-            assert "Flash params set to" in output
+            assert "Flash parameters set to" in output
             # Since SHA recalculation is supported for changed bootloader header
             assert "SHA digest in image updated" in output
 
@@ -1370,10 +1379,8 @@ class TestBootloaderHeaderRewriteCases(EsptoolTestCase):
 class TestAutoDetect(EsptoolTestCase):
     def _check_output(self, output):
         expected_chip_name = esptool.util.expand_chip_name(arg_chip)
-        if arg_chip not in ["esp8266", "esp32", "esp32s2"]:
-            assert "Unsupported detection protocol" not in output
         assert f"Detecting chip type... {expected_chip_name}" in output
-        assert f"Chip is {expected_chip_name}" in output
+        assert f"{'Chip type:':<20}{expected_chip_name}" in output
 
     @pytest.mark.quick_test
     def test_auto_detect(self):
@@ -1394,7 +1401,8 @@ class TestUSBMode(EsptoolTestCase):
         )
 
         if expected_usb_mode:
-            assert f"USB mode: {expected_usb_mode}" in output
+            assert "USB mode: " in output
+            assert expected_usb_mode in output
 
 
 @pytest.mark.flaky(reruns=5)
@@ -1510,12 +1518,12 @@ class TestReadWriteMemory(EsptoolTestCase):
     def test_read_write_flash_status(self):
         """Read flash status and write back the same status"""
         res = self.run_esptool("read-flash-status")
-        match = re.search(r"Status value: (0x[\d|a-f]*)", res)
+        match = re.search(r"Flash memory status: (0x[\d|a-f]*)", res)
         assert match is not None
         res = self.run_esptool(f"write-flash-status {match.group(1)}")
-        assert f"Initial flash status: {match.group(1)}" in res
-        assert f"Setting flash status: {match.group(1)}" in res
-        assert f"After flash status:   {match.group(1)}" in res
+        assert f"Initial flash memory status: {match.group(1)}" in res
+        assert f"Setting flash memory status: {match.group(1)}" in res
+        assert f"After flash memory status:   {match.group(1)}" in res
 
     def test_read_chip_description(self):
         try:
@@ -1733,12 +1741,12 @@ class TestESPObjectOperations(EsptoolTestCase):
         assert "Detected flash size: Unknown" in output_pre
         assert "Device: ffff" in output_pre or "Device: 0000" in output_pre
         assert (
-            "SFDP[0..3]: FF FF FF FF" in output_pre
-            or "SFDP[0..3]: 00 00 00 00" in output_pre
+            "SFDP[0..3]: 0xff 0xff 0xff 0xff" in output_pre
+            or "SFDP[0..3]: 0x00 0x00 0x00 0x00" in output_pre
         )
         assert "Detected flash size: Unknown" not in output_post
         assert "Device: ffff" not in output_post
-        assert "SFDP[0..3]: 53 46 44 50" in output_post
+        assert "SFDP[0..3]: 0x53 0x46 0x44 0x50" in output_post
 
     @pytest.mark.quick_test
     @capture_stdout
@@ -1749,7 +1757,7 @@ class TestESPObjectOperations(EsptoolTestCase):
             read_mac(esp)
             reset_chip(esp, "hard_reset")
             output = fake_out.getvalue()
-        assert "Stub running..." in output
+        assert "Stub flasher running" in output
         assert "MAC:" in output
 
     @capture_stdout
@@ -1770,11 +1778,11 @@ class TestESPObjectOperations(EsptoolTestCase):
                 reset_chip(esp, "hard_reset")
                 os.remove("output.bin")
         output = fake_out.getvalue()
-        assert "Stub running..." in output
-        assert "Hash of data verified." in output
+        assert "Stub flasher running" in output
+        assert "Hash of data verified" in output
         assert "Read 9216 bytes" in output
-        assert "verify OK (digest matched)" in output
-        assert "Chip erase completed" in output
+        assert "Verification successful (digest matched)" in output
+        assert "Flash memory erased successfully" in output
         assert "Hard resetting" in output
 
     @pytest.mark.quick_test
