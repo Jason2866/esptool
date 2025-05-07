@@ -24,6 +24,18 @@
 #define REG_SET_MASK(reg, mask) WRITE_REG((reg), (READ_REG(reg)|(mask)))
 #define REG_CLR_MASK(reg, mask) WRITE_REG((reg), (READ_REG(reg)&(~(mask))))
 #define REG_SET_FIELD(_r, _f, _v) (WRITE_REG((_r),((READ_REG(_r) & ~((_f) << (_f##_S)))|(((_v) & (_f))<<(_f##_S)))))
+#define REG_GET_FIELD(_r, _f) ((READ_REG(_r) >> (_f##_S)) & (_f##_V))
+#define REG_SET_BIT(_r, _b)                                           \
+   do                                                                  \
+   {                                                                   \
+     *(volatile uint32_t *)(_r) = (*(volatile uint32_t *)(_r)) | (_b); \
+   } while (0)
+
+#define REG_CLR_BIT(_r, _b)                                              \
+   do                                                                     \
+   {                                                                      \
+     *(volatile uint32_t *)(_r) = (*(volatile uint32_t *)(_r)) & (~(_b)); \
+   } while (0)
 
 #define ESP32_OR_LATER   !(ESP8266)
 #define ESP32S2_OR_LATER !(ESP8266 || ESP32)
@@ -46,8 +58,13 @@
 #define WITH_USB_OTG 1
 #endif // ESP32S3
 
-#ifdef ESP32C5BETA3
+#ifdef ESP32C5
 #define WITH_USB_JTAG_SERIAL 1
+#define IS_RISCV 1
+#endif // ESP32C5
+
+#ifdef ESP32C5BETA3
+#define WITH_USB_JTAG_SERIAL 0
 #define IS_RISCV 1
 #endif // ESP32C5BETA3
 
@@ -56,6 +73,11 @@
 #define IS_RISCV 1
 #endif // ESP32C6
 
+#ifdef ESP32C61
+#define WITH_USB_JTAG_SERIAL 1
+#define IS_RISCV 1
+#endif // ESP32C61
+
 #ifdef ESP32H2
 #define WITH_USB_JTAG_SERIAL 1
 #define IS_RISCV 1
@@ -63,8 +85,7 @@
 
 #ifdef ESP32P4
 #define WITH_USB_JTAG_SERIAL 1
-// TODO: Add support for USB OTG when MP is available
-// #define WITH_USB_OTG 1
+#define WITH_USB_OTG 1
 #define IS_RISCV 1
 #endif // ESP32P4
 
@@ -115,6 +136,7 @@
 #define USB_DEVICE_BASE_REG 0x60038000
 #define SYSTEM_BASE_REG     0x600C0000
 #define DR_REG_IO_MUX_BASE  0x60009000
+#define DR_REG_AES_XTS_BASE 0x600CC000
 #endif
 
 #ifdef ESP32S3BETA2
@@ -173,7 +195,7 @@
 #define DR_REG_IO_MUX_BASE  0x60009000
 #endif
 
-#if ESP32C6 || ESP32C5BETA3
+#if ESP32C61 || ESP32C6 || ESP32C5 || ESP32C5BETA3
 #define UART_BASE_REG       0x60000000 /* UART0 */
 #define SPI_BASE_REG        0x60003000 /* SPI peripheral 1, used for SPI flash */
 #define SPI0_BASE_REG       0x60002000 /* SPI peripheral 0, inner state machine */
@@ -199,10 +221,13 @@
 #define UART_BASE_REG       0x500CA000 /* UART0 */
 #define SPI_BASE_REG        0x5008D000 /* SPI peripheral 1, used for SPI flash */
 #define SPI0_BASE_REG       0x5008C000 /* SPI peripheral 0, inner state machine */
+#define USB_BASE_REG        0x50000000
 #define GPIO_BASE_REG       0x500E0000
 #define USB_DEVICE_BASE_REG 0x500D2000
+#define DR_REG_LP_SYS_BASE  0x50110000
 #define DR_REG_LP_WDT_BASE  0x50116000
 #define DR_REG_IO_MUX_BASE  0x500E1000
+#define HP_SYS_USBOTG20_CTRL_REG 0x500E515C
 #endif
 
 /**********************************************************
@@ -226,7 +251,7 @@
 #define UART_INT_CLR(X)    (UART_BASE_REG + 0x10)
 #define UART_STATUS(X)     (UART_BASE_REG + 0x1C)
 
-#if ESP32S2_OR_LATER && !ESP32C6 && !ESP32H2
+#if ESP32S2_OR_LATER && !ESP32C61 && !ESP32C6 && !ESP32H2
 #define UART_RXFIFO_CNT_M 0x3FF
 #else
 #define UART_RXFIFO_CNT_M 0xFF
@@ -333,14 +358,34 @@
 #define ETS_USB_INUM 17  /* arbitrary level 1 level interrupt */
 #endif // ESP32S3
 
-#if ESP32C6 || ESP32C5BETA3
+#if ESP32C6
 #define UART_USB_JTAG_SERIAL  3
 
 #define DR_REG_INTERRUPT_MATRIX_BASE            0x60010000
 #define INTERRUPT_CORE0_USB_INTR_MAP_REG        (DR_REG_INTERRUPT_MATRIX_BASE + 0xC0) /* USB-JTAG-Serial, INTMTX_CORE0_USB_INTR_MAP_REG */
 
 #define ETS_USB_INUM 17  /* arbitrary level 1 level interrupt */
-#endif // ESP32C6 || ESP32C5BETA3
+#endif // ESP32C6
+
+#if ESP32C61
+#define UART_USB_JTAG_SERIAL  3
+
+#define DR_REG_INTERRUPT_MATRIX_BASE            0x60010000
+#define INTERRUPT_CORE0_USB_INTR_MAP_REG        (DR_REG_INTERRUPT_MATRIX_BASE + 0xa8) /* USB-JTAG-Serial, INTMTX_CORE0_USB_INTR_MAP_REG */
+
+#define CLIC_EXT_INTR_NUM_OFFSET 16  /* For CLIC first 16 interrupts are reserved as internal */
+#define ETS_USB_INUM 17  /* arbitrary level 1 level interrupt */
+#endif // ESP32C61
+
+#if ESP32C5
+#define UART_USB_JTAG_SERIAL  3
+
+#define DR_REG_INTERRUPT_MATRIX_BASE            0x60010000
+#define INTERRUPT_CORE0_USB_INTR_MAP_REG        (DR_REG_INTERRUPT_MATRIX_BASE + 0xD0) /* USB-JTAG-Serial, INTMTX_CORE0_USB_INTR_MAP_REG */
+
+#define CLIC_EXT_INTR_NUM_OFFSET 16  /* For CLIC first 16 interrupts are reserved as internal */
+#define ETS_USB_INUM 17  /* arbitrary level 1 level interrupt */
+#endif // ESP32C5
 
 #ifdef ESP32H2
 #define UART_USB_JTAG_SERIAL  3
@@ -357,8 +402,9 @@
 
 #define DR_REG_INTERRUPT_MATRIX_BASE            0x500D6000
 #define INTERRUPT_CORE0_USB_INTR_MAP_REG        (DR_REG_INTERRUPT_MATRIX_BASE + 0x58) /* USB-JTAG-Serial, CORE0_USB_DEVICE_INT_MAP_REG */
+#define INTERRUPT_CORE0_USB_OTG_INT_MAP_REG     (DR_REG_INTERRUPT_MATRIX_BASE + 0x174) /* DWC-OTG, CORE0_USB_OTG_INT_MAP_REG */
 
-#define CLIC_EXT_INTR_NUM_OFFSET 16  /* For CLIC first 16 intrrupts are reserved as internal */
+#define CLIC_EXT_INTR_NUM_OFFSET 16  /* For CLIC first 16 interrupts are reserved as internal */
 #define ETS_USB_INUM 17  /* arbitrary level 1 level interrupt */
 #endif
 
@@ -403,8 +449,9 @@
 #define RTC_CNTL_SWD_AUTO_FEED_EN     (1 << 31)
 #endif
 
-#if ESP32C6 || ESP32C5BETA3 || ESP32P4
-#define RTC_CNTL_WDTCONFIG0_REG       (DR_REG_LP_WDT_BASE + 0x0)   // LP_WDT_RWDT_CONFIG0_REG
+#if ESP32C61 || ESP32C6 || ESP32C5 || ESP32C5BETA3 || ESP32P4
+#define RTC_CNTL_WDTCONFIG0_REG       (DR_REG_LP_WDT_BASE + 0x0)     // LP_WDT_RWDT_CONFIG0_REG
+#define RTC_CNTL_OPTION1_REG          (DR_REG_LP_SYS_BASE + 0x08)    // LP_SYSTEM_REG_SYS_CTRL_REG
 #define RTC_CNTL_WDTWPROTECT_REG      (DR_REG_LP_WDT_BASE + 0x0018)  // LP_WDT_RWDT_WPROTECT_REG
 #define RTC_CNTL_SWD_CONF_REG         (DR_REG_LP_WDT_BASE + 0x001C)  // LP_WDT_SWD_CONFIG_REG
 #define RTC_CNTL_SWD_WPROTECT_REG     (DR_REG_LP_WDT_BASE + 0x0020)  // LP_WDT_SWD_WPROTECT_REG
@@ -422,7 +469,11 @@
 #endif
 
 #define RTC_CNTL_WDT_WKEY             0x50D83AA1
-#define RTC_CNTL_FORCE_DOWNLOAD_BOOT  (1 << 0)
+#ifdef ESP32P4
+    #define RTC_CNTL_FORCE_DOWNLOAD_BOOT  (1 << 2)
+#else
+    #define RTC_CNTL_FORCE_DOWNLOAD_BOOT  (1 << 0)
+#endif // ESP32P4
 
 /**********************************************************
  * SYSTEM registers
@@ -456,6 +507,14 @@
 #define SYSTEM_SOC_CLK_MAX            1
 #endif // ESP32S2
 
+#ifdef ESP32C5
+#define PCR_SYSCLK_CONF_REG          (DR_REG_PCR_BASE + 0x10c)
+#define PCR_SOC_CLK_SEL_M            ((PCR_SOC_CLK_SEL_V)<<(PCR_SOC_CLK_SEL_S))
+#define PCR_SOC_CLK_SEL_V            0x3
+#define PCR_SOC_CLK_SEL_S            16
+#define PCR_SOC_CLK_MAX              3 // CPU_CLK frequency is 240 MHz (source is PLL_F240_CLK)
+#endif // ESP32C5
+
 #ifdef ESP32C5BETA3
 #define PCR_SYSCLK_CONF_REG          (DR_REG_PCR_BASE + 0x10c)
 #define PCR_SOC_CLK_SEL_M            ((PCR_SOC_CLK_SEL_V)<<(PCR_SOC_CLK_SEL_S))
@@ -471,6 +530,14 @@
 #define PCR_SOC_CLK_SEL_S            16
 #define PCR_SOC_CLK_MAX              1 // CPU_CLK frequency is 160 MHz (source is PLL_CLK)
 #endif // ESP32C6
+
+#ifdef ESP32C61
+#define PCR_SYSCLK_CONF_REG          (DR_REG_PCR_BASE + 0xe8)
+#define PCR_SOC_CLK_SEL_M            ((PCR_SOC_CLK_SEL_V)<<(PCR_SOC_CLK_SEL_S))
+#define PCR_SOC_CLK_SEL_V            0x3
+#define PCR_SOC_CLK_SEL_S            16
+#define PCR_SOC_CLK_MAX              1 // CPU_CLK frequency is 160 MHz (source is PLL_CLK)
+#endif // ESP32C61
 
 #ifdef ESP32H2
 #define PCR_SYSCLK_CONF_REG          (DR_REG_PCR_BASE + 0x10c)
@@ -501,9 +568,9 @@
 #define ROM_SPIFLASH_LEGACY         0x3ffae270
 #endif // ESP32 || ESP32S2 || ESP32S3 || ESP32S3BETA2
 
-#if ESP32C3 || ESP32C6BETA || ESP32C2 || ESP32C6 || ESP32C5BETA3
+#if ESP32C3 || ESP32C6BETA || ESP32C2 || ESP32C6 || ESP32C61 || ESP32C5 || ESP32C5BETA3
 #define ROM_SPIFLASH_LEGACY         0x3fcdfff4
-#endif // ESP32C3 || ESP32C6BETA || ESP32C2 || ESP32C6
+#endif // ESP32C3 || ESP32C6BETA || ESP32C2 || ESP32C6 || ESP32C61 || ESP32C5 || ESP32C5BETA3
 
 #if ESP32H2BETA1 || ESP32H2BETA2
 #define ROM_SPIFLASH_LEGACY         0x3fcdfff0
@@ -567,13 +634,13 @@
 #define FUNC_GPIO 1
 #endif // ESP32C2
 
-#if ESP32C6 || ESP32C6BETA || ESP32C5BETA3
+#if ESP32C61 || ESP32C6 || ESP32C6BETA || ESP32C5 || ESP32C5BETA3
 #define PERIPHS_IO_MUX_SPICLK_U           (DR_REG_IO_MUX_BASE + 0x78)
 #define PERIPHS_IO_MUX_SPIQ_U             (DR_REG_IO_MUX_BASE + 0x68)
 #define PERIPHS_IO_MUX_SPID_U             (DR_REG_IO_MUX_BASE + 0x7c)
 #define PERIPHS_IO_MUX_SPICS0_U           (DR_REG_IO_MUX_BASE + 0x64)
 #define FUNC_GPIO 1
-#endif // ESP32C6 || ESP32C6BETA
+#endif // ESP32C61 || ESP32C6 || ESP32C6BETA || ESP32C5 || ESP32C5BETA3
 
 #if ESP32H2 || ESP32H2BETA1 || ESP32H2BETA2
 #define PERIPHS_IO_MUX_SPICLK_U           (DR_REG_IO_MUX_BASE + 0x50)
@@ -589,4 +656,32 @@
 #define PERIPHS_IO_MUX_SPID_U             (DR_REG_IO_MUX_BASE + 0x84)
 #define PERIPHS_IO_MUX_SPICS0_U           (DR_REG_IO_MUX_BASE + 0x78)
 #define FUNC_GPIO 1
+#endif // ESP32P4
+
+/**********************************************************
+ * AES-XTS peripheral
+ */
+
+#define MAX_ENCRYPT_BLOCK 64
+
+#if ESP32S3
+#define AES_XTS_PLAIN_BASE               (DR_REG_AES_XTS_BASE + 0x00)
+#define AES_XTS_SIZE_REG                 (DR_REG_AES_XTS_BASE + 0x40)
+#define AES_XTS_DESTINATION_REG          (DR_REG_AES_XTS_BASE + 0x44)
+#define AES_XTS_PHYSICAL_ADDR_REG        (DR_REG_AES_XTS_BASE + 0x48)
+#define AES_XTS_TRIGGER_REG              (DR_REG_AES_XTS_BASE + 0x4C)
+#define AES_XTS_RELEASE_REG              (DR_REG_AES_XTS_BASE + 0x50)
+#define AES_XTS_DESTROY_REG              (DR_REG_AES_XTS_BASE + 0x54)
+#define AES_XTS_STATE_REG                (DR_REG_AES_XTS_BASE + 0x58)
+#endif // ESP32S3
+
+#if ESP32P4
+#define AES_XTS_PLAIN_BASE               (SPI0_BASE_REG + 0x300)
+#define AES_XTS_SIZE_REG                 (SPI0_BASE_REG + 0x340)
+#define AES_XTS_DESTINATION_REG          (SPI0_BASE_REG + 0x344)
+#define AES_XTS_PHYSICAL_ADDR_REG        (SPI0_BASE_REG + 0x348)
+#define AES_XTS_TRIGGER_REG              (SPI0_BASE_REG + 0x34C)
+#define AES_XTS_RELEASE_REG              (SPI0_BASE_REG + 0x350)
+#define AES_XTS_DESTROY_REG              (SPI0_BASE_REG + 0x354)
+#define AES_XTS_STATE_REG                (SPI0_BASE_REG + 0x358)
 #endif // ESP32P4
