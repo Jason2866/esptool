@@ -353,8 +353,8 @@ def check_flash_size(esp: ESPLoader, address: int, size: int) -> None:
 # is implied globally
 @click.option(
     "--stub-version",
-    default=os.environ.get("ESPTOOL_STUB_VERSION", StubFlasher.STUB_SUBDIRS[0]),
-    type=click.Choice(StubFlasher.STUB_SUBDIRS),
+    default=os.environ.get("ESPTOOL_STUB_VERSION", "1"),
+    type=click.Choice(["1", "2"]),
     # not a public option and is not subject to the semantic versioning policy
     hidden=True,
 )
@@ -391,7 +391,7 @@ def cli(
 
 def prepare_esp_object(ctx):
     """Prepare ESP object for operation"""
-    StubFlasher.set_preferred_stub_subdir(ctx.obj["stub_version"])
+    StubFlasher.set_stub_subdir(ctx.obj["stub_version"])
     # Commands that require an ESP object (flash read/write, etc.)
     # 1) Get the ESP object
     #######################
@@ -553,10 +553,15 @@ def prepare_esp_object(ctx):
 @cli.command("load-ram")
 @click.argument("filename", type=AutoHex2BinType())
 @click.pass_context
-def load_ram_cli(ctx, filename):
+def load_ram_cli(ctx, filename: list[tuple[int | None, t.IO[bytes]]]):
     """Download an image to RAM and execute."""
+    if len(filename) > 1:
+        raise FatalError(
+            "Merged binary image detected. "
+            "Only one file can be specified for the load-ram command."
+        )
     prepare_esp_object(ctx)
-    load_ram(ctx.obj["esp"], filename)
+    load_ram(ctx.obj["esp"], filename[0][1].name)
 
 
 @cli.command("dump-mem")
@@ -670,9 +675,13 @@ def run_cli(ctx):
 @cli.command("image-info")
 @click.argument("filename", type=AutoHex2BinType())
 @click.pass_context
-def image_info_cli(ctx, filename):
+def image_info_cli(ctx, filename: list[tuple[int | None, t.IO[bytes]]]):
     """Print information about a firmware image (bootloader or application)."""
-    image_info(filename, chip=None if ctx.obj["chip"] == "auto" else ctx.obj["chip"])
+    chip = None if ctx.obj["chip"] == "auto" else ctx.obj["chip"]
+    if len(filename) == 1:
+        image_info(filename[0][1].name, chip=chip)
+    else:
+        image_info(filename, chip=chip)  # type: ignore
 
 
 @cli.command("elf2image")

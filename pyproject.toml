@@ -37,6 +37,7 @@
         "reedsolo>=1.5.3,<1.8",
         "PyYAML>=5.1",
         "rich_click",
+        "click<8.2.0",
     ]
 
 [project.urls]
