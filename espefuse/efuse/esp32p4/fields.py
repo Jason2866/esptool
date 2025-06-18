@@ -55,9 +55,6 @@ class EspEfuses(base_fields.EspEfusesBase):
     Wrapper object to manage the efuse fields in a connected ESP bootloader
     """
 
-    debug = False
-    do_not_confirm = False
-
     def __init__(
         self,
         esp,
@@ -66,14 +63,12 @@ class EspEfuses(base_fields.EspEfusesBase):
         do_not_confirm=False,
         extend_efuse_table=None,
     ):
+        super().__init__(esp, skip_connect, debug, do_not_confirm, extend_efuse_table)
         self.Blocks = EfuseDefineBlocks()
         self.Fields = EfuseDefineFields(extend_efuse_table)
         self.REGS = EfuseDefineRegisters
         self.BURN_BLOCK_DATA_NAMES = self.Blocks.get_burn_block_data_names()
         self.BLOCKS_FOR_KEYS = self.Blocks.get_blocks_for_keys()
-        self._esp = esp
-        self.debug = debug
-        self.do_not_confirm = do_not_confirm
         if esp.CHIP_NAME != "ESP32-P4":
             raise esptool.FatalError(
                 "Expected the 'esp' param for ESP32-P4 chip but got for '%s'."
@@ -291,7 +286,20 @@ class EfuseField(base_fields.EfuseFieldBase):
             "keypurpose": EfuseKeyPurposeField,
             "t_sensor": EfuseTempSensor,
             "adc_tp": EfuseAdcPointCalibration,
+            "wafer": EfuseWafer,
         }.get(efuse.class_type, EfuseField)(parent, efuse)
+
+
+class EfuseWafer(EfuseField):
+    def get(self, from_read=True):
+        hi_bits = self.parent["WAFER_VERSION_MAJOR_HI"].get(from_read)
+        assert self.parent["WAFER_VERSION_MAJOR_HI"].bit_len == 1
+        lo_bits = self.parent["WAFER_VERSION_MAJOR_LO"].get(from_read)
+        assert self.parent["WAFER_VERSION_MAJOR_LO"].bit_len == 2
+        return (hi_bits << 2) + lo_bits
+
+    def save(self, new_value):
+        raise esptool.FatalError(f"Burning {self.name} is not supported")
 
 
 class EfuseTempSensor(EfuseField):

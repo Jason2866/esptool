@@ -225,62 +225,152 @@ Choices for the ``--before`` and ``--after`` options have been renamed to use ``
 
 1. Replace all underscores in the ``--before`` and ``--after`` options with ``-`` in your scripts.
 
+.. only:: not esp8266
 
-espsecure.py ``v5`` Migration Guide
-***********************************
+    espsecure.py ``v5`` Migration Guide
+    ***********************************
 
-Command and Option Renaming
-###########################
+    Command and Option Renaming
+    ###########################
 
-All the commands and options have been renamed to use ``-`` instead of ``_`` as a separator (e.g., ``sign_data`` -> ``sign-data``).
+    All the commands and options have been renamed to use ``-`` instead of ``_`` as a separator (e.g., ``sign_data`` -> ``sign-data``).
 
-Old command and option names are **deprecated**, meaning they will work for now with a warning, but will be removed in the next major release.
+    Old command and option names are **deprecated**, meaning they will work for now with a warning, but will be removed in the next major release.
 
-This change affects most of the commands and the following options: ``--aes_xts``, ``--flash_crypt_conf``, ``--append_signatures``.
+    This change affects most of the commands and the following options: ``--aes_xts``, ``--flash_crypt_conf``, ``--append_signatures``.
 
-**Migration Steps:**
+    **Migration Steps:**
 
-1. Replace all underscores in command and option names with ``-`` in your scripts and CI pipelines.
+    1. Replace all underscores in command and option names with ``-`` in your scripts and CI pipelines.
 
-Public API Changes
-##################
+    Public API Changes
+    ##################
 
-The public API of ``espsecure.py`` has been updated to provide a more consistent and user-friendly interface for programmatic use in custom scripts and applications.
+    The public API of ``espsecure.py`` has been updated to provide a more consistent and user-friendly interface for programmatic use in custom scripts and applications.
 
-**Key Changes:**
+    **Key Changes:**
 
-- All functions now accept individual parameters instead of relying on the ``args`` object from the argparse module. Affected functions are:
-    - ``digest_secure_bootloader``
-    - ``generate_signing_key``
-    - ``digest_secure_bootloader``
-    - ``generate_signing_key``
-    - ``sign_data`` including ``sign_secure_boot_v1`` and ``sign_secure_boot_v2``
-    - ``verify_signature`` including ``verify_signature_v1`` and ``verify_signature_v2``
-    - ``extract_public_key``
-    - ``signature_info_v2``
-    - ``digest_sbv2_public_key`` and ``digest_rsa_public_key``
-    - ``digest_private_key``
-    - ``generate_flash_encryption_key``
-    - ``decrypt_flash_data``
-    - ``encrypt_flash_data``
-- The ``main`` function parameter ``custom_commandline`` has been renamed to ``argv`` to unify the naming convention with esptool.
+    - All functions now accept individual parameters instead of relying on the ``args`` object from the argparse module. Affected functions are:
+        - ``digest_secure_bootloader``
+        - ``generate_signing_key``
+        - ``digest_secure_bootloader``
+        - ``generate_signing_key``
+        - ``sign_data`` including ``sign_secure_boot_v1`` and ``sign_secure_boot_v2``
+        - ``verify_signature`` including ``verify_signature_v1`` and ``verify_signature_v2``
+        - ``extract_public_key``
+        - ``signature_info_v2``
+        - ``digest_sbv2_public_key`` and ``digest_rsa_public_key``
+        - ``digest_private_key``
+        - ``generate_flash_encryption_key``
+        - ``decrypt_flash_data``
+        - ``encrypt_flash_data``
+    - The ``main`` function parameter ``custom_commandline`` has been renamed to ``argv`` to unify the naming convention with esptool.
 
-**Migration Steps:**
+    **Migration Steps:**
 
-1. Update function calls to pass individual parameters instead of the ``args`` object. For example:
-   ``sign_data(args)`` -> ``sign_data(data=args.data, key=args.key, ...)``
-   or if you were mocking the args object, now you don't have to do that and you can pass parameters directly to the function like:
-   ``sign_data(data=data, key=key, ...)``.
-2. Replace the ``custom_commandline`` parameter with ``argv`` in the ``main`` function call.
+    1. Update function calls to pass individual parameters instead of the ``args`` object. For example:
+    ``sign_data(args)`` -> ``sign_data(data=args.data, key=args.key, ...)``
+    or if you were mocking the args object, now you don't have to do that and you can pass parameters directly to the function like:
+    ``sign_data(data=data, key=key, ...)``.
+    2. Replace the ``custom_commandline`` parameter with ``argv`` in the ``main`` function call.
 
-espefuse.py ``v5`` Migration Guide
-***********************************
+    espefuse.py ``v5`` Migration Guide
+    ***********************************
 
-Reset Mode Renaming
-###################
+    Reset Mode Renaming
+    ###################
 
-Choices for the ``--before`` option have been renamed to use ``-`` instead of ``_`` as a separator (e.g., ``default_reset`` -> ``default-reset``).
+    Choices for the ``--before`` option have been renamed to use ``-`` instead of ``_`` as a separator (e.g., ``default_reset`` -> ``default-reset``).
 
-**Migration Steps:**
+    **Migration Steps:**
 
-1. Replace all underscores in the ``--before`` option with ``-`` in your scripts.
+    1. Replace all underscores in the ``--before`` option with ``-`` in your scripts.
+
+    Command and Option Renaming
+    ###########################
+
+    All the commands and options have been renamed to use ``-`` instead of ``_`` as a separator (e.g., ``burn_custom_mac`` -> ``burn-custom-mac``).
+
+    From options only ``--file_name`` has been renamed to ``--file-name``.
+
+    Old command and option names are **deprecated**, meaning they will work for now with a warning, but will be removed in the next major release.
+
+    **Migration Steps:**
+
+    1. Replace all underscores in the command names with ``-`` in your scripts.
+
+
+    ``--port`` Option is Required
+    #############################
+
+    The ``--port`` option is now required for all commands (except when using ``--virt``). Previously it was optional and defaulted to ``/dev/ttyUSB0``.
+
+    **Migration Steps:**
+
+    1. Add the ``--port`` option to all your espefuse commands.
+
+
+    ``execute-scripts`` Command Removal
+    ###################################
+
+    The ``execute-scripts`` command has been **removed in v5**. This command was used to execute custom eFuses scripts. It was deprecated in favor of using ``espefuse.py`` as a Python module (see :ref:`here <espefuse-scripting>`).
+
+    **Migration Steps:**
+
+    1. Refactor any workflows using the deprecated ``execute-scripts`` to use the public API.
+    2. Make sure to use the ``batch_mode`` argument for ``init_commands`` to avoid burning eFuses one by one.
+    3. Variables ``idx`` and ``configfiles`` are no longer supported. These can be replaced with simple for loops in Python.
+
+    For example, the following commands and script (using ESP32):
+
+    .. code-block:: bash
+
+        > espefuse.py --port /dev/ttyUSB0 execute_scripts efuse_script.py --do-not-confirm
+
+    .. code-block:: python
+
+        espefuse(esp, efuses, args, "burn_efuse JTAG_DISABLE 1 DISABLE_SDIO_HOST 1 CONSOLE_DEBUG_DISABLE 1")
+        espefuse(esp, efuses, args, "burn_key flash_encryption ../../images/efuse/256bit --no-protect-key")
+        espefuse(esp, efuses, args, "burn_key_digest ../../secure_images/rsa_secure_boot_signing_key.pem")
+        espefuse(esp, efuses, args, "burn_bit BLOCK3 64 66 69 72 78 82 83 90")
+        espefuse(esp, efuses, args, "burn_custom_mac AA:BB:CC:DD:EE:88")
+
+        efuses.burn_all()
+
+        espefuse(esp, efuses, args, "summary")
+        espefuse(esp, efuses, args, "adc_info")
+        espefuse(esp, efuses, args, "get_custom_mac")
+
+        if not efuses["BLOCK1"].is_readable() or not efuses["BLOCK1"].is_writeable():
+            raise Exception("BLOCK1 should be readable and writeable")
+
+    Can be replaced with public API:
+
+    .. code-block:: python
+
+        from espefuse import init_commands
+
+        with init_commands(port="/dev/ttyUSB0", batch_mode=True, do_not_confirm=True) as espefuse:
+            espefuse.burn_efuse({"JTAG_DISABLE": "1", "DISABLE_SDIO_HOST": "1", "CONSOLE_DEBUG_DISABLE": "1"})
+            with open("../../images/efuse/256bit", "rb") as f:
+                espefuse.burn_key(["flash_encryption"], [f], no_protect_key=True)
+            with open("../../secure_images/rsa_secure_boot_signing_key.pem", "rb") as f:
+                espefuse.burn_key_digest([f])
+            espefuse.burn_bit("BLOCK3", [64, 66, 69, 72, 78, 82, 83, 90])
+            espefuse.burn_custom_mac(b"\xaa\xbb\xcc\xdd\xee\x88")
+
+            espefuse.burn_all()
+
+            espefuse.summary()
+            espefuse.adc_info()
+            espefuse.get_custom_mac()
+
+            if not espefuse.efuses["BLOCK1"].is_readable() or not espefuse.efuses["BLOCK1"].is_writeable():
+                raise Exception("BLOCK1 should be readable and writeable")
+
+    .. note::
+
+        Please note that the ``batch_mode`` argument for ``init_commands`` is required to avoid burning eFuses one by one. This was previously
+        the default behavior for ``execute-scripts`` command.
+
+    For more details on the public API, see :ref:`espefuse-scripting`.
