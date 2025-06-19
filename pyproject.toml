@@ -158,6 +158,9 @@
     # allow definition from star imports in docs config
     "docs/conf_common.py" =  ["F405"]
 
+    # ignore release helper
+    extend-exclude = ["ci/pack_python.py", "ci/gen_pio_manifest.py", "ci/gen_pio_manifest.py"]
+
 [tool.ruff.format]
     quote-style = "double"
     indent-style = "space"
