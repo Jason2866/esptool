@@ -93,7 +93,7 @@ jobs:
         - platform: linux-amd64
           TARGET: linux-amd64
           SEPARATOR: ':'
-          RUN_ON: ubuntu-24.04
+          RUN_ON: ubuntu-22.04
     env:
       DISTPATH: esptool-${{ matrix.TARGET }}
       STUBS_DIR: ./esptool/targets/stub_flasher/
