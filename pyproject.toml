@@ -38,7 +38,7 @@
         "PyYAML>=5.1",
         "intelhex",
         "rich_click",
-        "click<8.2.0",
+        "click<9",
     ]
 
 [project.urls]
@@ -78,7 +78,7 @@
 
 [tool.commitizen]
     name = "czespressif"
-    version = "5.0.1"
+    version = "5.0.2"
     update_changelog_on_bump = true
     tag_format = "v$version"
     changelog_start_rev = "v4.2.1"
