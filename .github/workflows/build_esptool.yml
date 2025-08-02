@@ -14,9 +14,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        platform: [windows, linux-amd64, macos-amd64, macos-arm64, armv7, aarch64]
+        platform: [windows-amd64, linux-amd64, macos-amd64, macos-arm64, linux-armv7, linux-aarch64]
         include:
-          - platform: windows
+          - platform: windows-amd64
             runner: windows-latest
           - platform: linux-amd64
             runner: ubuntu-latest
@@ -24,9 +24,9 @@ jobs:
             runner: macos-13
           - platform: macos-arm64
             runner: macos-latest
-          - platform: armv7
+          - platform: linux-armv7
             runner: ubuntu-latest
-          - platform: aarch64
+          - platform: linux-aarch64
             runner: ubuntu-24.04-arm
     env:
       DISTPATH: esptool-${{ matrix.platform }}
@@ -38,11 +38,11 @@ jobs:
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
-        if: (matrix.platform != 'armv7') || contains(github.ref_name, 'dev')
+        if: (matrix.platform != 'linux-armv7') || contains(github.ref_name, 'dev')
         with:
           python-version: "3.13"
           # Python is used only to apply dev-release patch on Linux runners and no packages are installed as the build happens in the container
-          cache: ${{ matrix.platform != 'armv7' && matrix.platform != 'aarch64' && matrix.platform != 'linux-amd64' && 'pip' || '' }}
+          cache: ${{ matrix.platform != 'linux-armv7' && matrix.platform != 'linux-aarch64' && matrix.platform != 'linux-amd64' && 'pip' || '' }}
       - name: Patch version for dev releases
         if: contains(github.ref_name, 'dev')
         run: |
@@ -133,12 +133,12 @@ jobs:
           uses: actions/download-artifact@v4
         - name: Rename and package binaries
           run: |
-            zip -r esptool-armv7.zip ./esptool-armv7
-            zip -r esptool-aarch64.zip ./esptool-aarch64
+            zip -r esptool-linux-armv7.zip ./esptool-linux-armv7
+            zip -r esptool-linux-aarch64.zip ./esptool-linux-aarch64
             zip -r esptool-macos-arm64.zip ./esptool-macos-arm64
             zip -r esptool-macos-amd64.zip ./esptool-macos-amd64
             zip -r esptool-linux-amd64.zip ./esptool-linux-amd64
-            zip -r esptool-win64.zip ./esptool-win64
+            zip -r esptool-windows-amd64.zip ./esptool-windows-amd64
         - name: Release
           uses: jason2866/action-gh-release@v1.3
           with:
