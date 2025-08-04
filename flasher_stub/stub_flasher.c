@@ -156,7 +156,7 @@ static void disable_watchdogs()
 }
 #endif // WITH_USB_JTAG_SERIAL
 
-#if (ESP32S3 && !ESP32S3BETA2) || ESP32P4
+#if (ESP32S3 && !ESP32S3BETA2) || ESP32P4 || ESP32C5
 bool large_flash_mode = false;
 
 bool flash_larger_than_16mb()
@@ -174,7 +174,7 @@ bool flash_larger_than_16mb()
   uint8_t flid_lowbyte = (flash_id >> 16) & 0xFF;
   return ((flid_lowbyte >= 0x19 && flid_lowbyte < 0x30) || (flid_lowbyte >= 0x39)); // See DETECTED_FLASH_SIZES in esptool
 }
-#endif // (ESP32S3 && !ESP32S3BETA2) || ESP32P4
+#endif // (ESP32S3 && !ESP32S3BETA2) || ESP32P4 || ESP32C5
 
 static void stub_handle_rx_byte(char byte)
 {
@@ -558,6 +558,9 @@ void stub_main()
     }
   #elif ESP32P4
     large_flash_mode = flash_larger_than_16mb();
+  #elif ESP32C5
+    // Older ECOs either do not have the necessary functions in ROM or the functions did not work correctly
+    large_flash_mode = (_rom_eco_version >= 2) && flash_larger_than_16mb();
   #endif //ESP32S3 && !ESP32S3BETA2
   SPIParamCfg(0, FLASH_MAX_SIZE, FLASH_BLOCK_SIZE, FLASH_SECTOR_SIZE,
               FLASH_PAGE_SIZE, FLASH_STATUS_MASK);
