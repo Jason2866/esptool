@@ -188,6 +188,8 @@ spi_flash_read_encrypted = 0x40000200;
 rom_spiflash_legacy_funcs = 0x4085fff0;
 rom_spiflash_legacy_data = 0x4085ffec;
 g_flash_guard_ops = 0x4085fff4;
+memcpy = 0x40035b86;
+esp_rom_opiflash_exec_cmd = 0x4002c42a;
 
 
 /***************************************
@@ -481,3 +483,10 @@ usb_serial_device_rx_one_char_block = 0x40000abc;
 usb_serial_device_tx_flush = 0x40000ac0;
 usb_serial_device_tx_one_char = 0x40000ac4;
 
+
+/***************************************
+ ROM version variables for esp32c5
+ These addresses should be compatible with any ROM version for this chip.
+ ***************************************/
+
+_rom_eco_version = 0x40000014;
