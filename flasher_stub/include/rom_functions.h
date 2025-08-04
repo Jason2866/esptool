@@ -181,7 +181,7 @@ typedef struct {
 UartDevice * GetUartDevice();
 #endif // WITH_USB_JTAG_SERIAL || WITH_USB_OTG
 
-#if defined(ESP32S3) || defined(ESP32P4)
+#if defined(ESP32S3) || defined(ESP32P4) || defined(ESP32C5)
 #define BIT(nr)                 (1UL << (nr))
 #define ESP_ROM_OPIFLASH_SEL_CS0     (BIT(0))
 
@@ -348,6 +348,10 @@ void esp_rom_opiflash_exec_cmd(int spi_num, SpiFlashRdMode mode,
     uint32_t cs_mask,
     bool is_write_erase_operation);
 
+#if ESP32C5
+extern uint32_t _rom_eco_version; // rom constant to define ECO version
+#endif // ESP32C5
+
 #if ESP32P4
 extern uint32_t _rom_eco_version; // rom constant to define ECO version
 void esp_rom_opiflash_exec_cmd_eco1(int spi_num, SpiFlashRdMode mode,
@@ -379,4 +383,4 @@ void esp_rom_spiflash_write_encrypted_enable();
 void esp_rom_spiflash_write_encrypted_disable();
 SpiFlashOpResult esp_rom_spiflash_unlock();
 SpiFlashOpResult esp_rom_spiflash_wait_idle(void);
-#endif // ESP32S3 || ESP32P4
+#endif // ESP32S3 || ESP32P4 || ESP32C5
