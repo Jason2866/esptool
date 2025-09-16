@@ -14,10 +14,10 @@ jobs:
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        platform: [windows-amd64, linux-amd64, macos-amd64, macos-arm64, linux-armv7, linux-aarch64]
+        platform: [linux-amd64, macos-amd64, macos-arm64, linux-armv7, linux-aarch64]
         include:
-          - platform: windows-amd64
-            runner: windows-latest
+#          - platform: windows-amd64
+#            runner: windows-latest
           - platform: linux-amd64
             runner: ubuntu-latest
           - platform: macos-amd64
@@ -138,7 +138,7 @@ jobs:
             zip -r esptool-macos-arm64.zip ./esptool-macos-arm64
             zip -r esptool-macos-amd64.zip ./esptool-macos-amd64
             zip -r esptool-linux-amd64.zip ./esptool-linux-amd64
-            zip -r esptool-windows-amd64.zip ./esptool-windows-amd64
+#            zip -r esptool-windows-amd64.zip ./esptool-windows-amd64
         - name: Release
           uses: jason2866/action-gh-release@v1.3
           with:
