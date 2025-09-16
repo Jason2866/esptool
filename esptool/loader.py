@@ -159,8 +159,10 @@ class StubFlasher:
     # directories will be searched in the order of STUB_SUBDIRS
     STUB_SUBDIRS = ["1"]
 
-    def __init__(self, chip_name):
-        with open(self.get_json_path(chip_name)) as json_file:
+    def __init__(self, target):
+        json_name = target.STUB_CLASS.stub_json_name(target)
+
+        with open(self._get_json_path(json_name, target.CHIP_NAME)) as json_file:
             stub = json.load(json_file)
 
         self.text = base64.b64decode(stub["text"])
@@ -176,10 +178,9 @@ class StubFlasher:
 
         self.bss_start = stub.get("bss_start")
 
-    def get_json_path(self, chip_name):
-        chip_name = strip_chip_name(chip_name)
+    def _get_json_path(self, json_name, chip_name):
         for i, subdir in enumerate(self.STUB_SUBDIRS):
-            json_path = os.path.join(self.STUB_DIR, subdir, f"{chip_name}.json")
+            json_path = os.path.join(self.STUB_DIR, subdir, json_name)
             if os.path.exists(json_path):
                 if i:
                     log.warning(
@@ -933,7 +934,7 @@ class ESPLoader:
         """Start downloading an application image to RAM"""
         # check we're not going to overwrite a running stub with this data
         if self.IS_STUB:
-            stub = StubFlasher(self.CHIP_NAME)
+            stub = StubFlasher(self)
             load_start = offset
             load_end = offset + size
             for stub_start, stub_end in [
@@ -1066,11 +1067,16 @@ class ESPLoader:
                 else:
                     raise
 
-    def flash_finish(self, reboot=False):
+    def flash_finish(self, reboot=False, timeout=DEFAULT_TIMEOUT):
         """Leave flash mode and run/reboot"""
         pkt = struct.pack("<I", int(not reboot))
         # stub sends a reply to this command
-        self.check_command("leave flash download mode", self.ESP_CMDS["FLASH_END"], pkt)
+        self.check_command(
+            "leave flash download mode",
+            self.ESP_CMDS["FLASH_END"],
+            pkt,
+            timeout=timeout,
+        )
 
     def run(self, reboot=False):
         """Run application code in flash"""
@@ -1276,7 +1282,7 @@ class ESPLoader:
     def run_stub(self, stub: StubFlasher | None = None) -> "ESPLoader":
         log.stage()
         if stub is None:
-            stub = StubFlasher(self.CHIP_NAME)
+            stub = StubFlasher(self)
 
         if self.sync_stub_detected:
             log.stage(finish=True)
@@ -1400,7 +1406,7 @@ class ESPLoader:
                     raise
 
     @stub_and_esp32_function_only
-    def flash_defl_finish(self, reboot=False):
+    def flash_defl_finish(self, reboot=False, timeout=DEFAULT_TIMEOUT):
         """Leave compressed flash mode and run/reboot"""
         if not reboot and not self.IS_STUB:
             # skip sending flash_finish to ROM loader, as this
@@ -1408,7 +1414,10 @@ class ESPLoader:
             return
         pkt = struct.pack("<I", int(not reboot))
         self.check_command(
-            "leave compressed flash mode", self.ESP_CMDS["FLASH_DEFL_END"], pkt
+            "leave compressed flash mode",
+            self.ESP_CMDS["FLASH_DEFL_END"],
+            pkt,
+            timeout=timeout,
         )
         self.in_bootloader = False
 
@@ -1834,6 +1843,10 @@ class StubMixin:
         self._trace_enabled = rom_loader._trace_enabled
         self.cache = rom_loader.cache
         self.flush_input()  # resets _slip_reader
+
+    def stub_json_name(self):
+        chip_name = strip_chip_name(self.CHIP_NAME)
+        return f"{chip_name}.json"
 
 
 def slip_reader(port, trace_function):

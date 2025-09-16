@@ -326,7 +326,7 @@ class EsptoolTestCase:
         # "Hello world" data without unwanted chip reset.
         with serial.serial_for_url(arg_port, arg_baud, rtscts=True) as p:
             p.timeout = 5
-            output = p.read(100)
+            output = p.read(200)
             print(f"Output: {output}")
             assert any(item in output for item in expected_out)
 
@@ -445,7 +445,8 @@ class TestFlashing(EsptoolTestCase):
     @pytest.mark.skipif(arg_chip != "esp32", reason="Don't need to test multiple times")
     def test_short_flash_deprecated(self):
         out = self.run_esptool(
-            "--before default_reset write_flash 0x0 images/one_kb.bin --flash_size keep"
+            "--before default_reset write_flash 0x0 images/one_kb.bin "
+            "--flash_size keep --flash_mode=keep"
         )
         assert (
             "Deprecated: Choice 'default_reset' for option '--before' is deprecated. "
@@ -454,6 +455,10 @@ class TestFlashing(EsptoolTestCase):
         assert (
             "Deprecated: Option '--flash_size' is deprecated. "
             "Use '--flash-size' instead." in out
+        )
+        assert (
+            "Deprecated: Option '--flash_mode' is deprecated. "
+            "Use '--flash-mode' instead." in out
         )
         assert (
             "Deprecated: Command 'write_flash' is deprecated. "
@@ -1224,15 +1229,24 @@ class TestMemoryOperations(EsptoolTestCase):
         assert "to 'memout.bin'" in output
         os.remove("memout.bin")
 
-    def test_memory_write(self):
-        output = self.run_esptool("write-mem 0x400C0000 0xabad1dea 0x0000ffff")
+    @pytest.fixture
+    def test_address(self):
+        """
+        Return a RAM address suitable for memory read/write tests.
+        ESP32-P4 has different RAM ranges. Address 0x4FF90000 is just
+        inside the range and unused.
+        """
+        return 0x4FF90000 if arg_chip == "esp32p4" else 0x400C0000
+
+    def test_memory_write(self, test_address):
+        output = self.run_esptool(f"write-mem {test_address:#X} 0xabad1dea 0x0000ffff")
         assert "Wrote 0xabad1dea" in output
         assert "mask 0x0000ffff" in output
-        assert "to 0x400c0000" in output
+        assert f"to {test_address:#x}" in output
 
-    def test_memory_read(self):
-        output = self.run_esptool("read-mem 0x400C0000")
-        assert "0x400c0000 =" in output
+    def test_memory_read(self, test_address):
+        output = self.run_esptool(f"read-mem {test_address:#X}")
+        assert f"{test_address:#x} =" in output
 
 
 class TestKeepImageSettings(EsptoolTestCase):
