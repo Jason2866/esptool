@@ -60,11 +60,6 @@ Please note that the binaries might have some limitations:
 - The application has slower startup time compared to running the Python script directly.
 - The application cannot be imported as a Python module in other Python applications.
 
-.. note::
-
-   For Linux, the binaries are built using Ubuntu 22.04 as the base image. That means any version older than Ubuntu 22.04 (or any other distribution that uses ``glibc<2.35``) might not work.
-   For using on Ubuntu 20.04, please use the Python package installation or ``v4.*`` release.
-
 How to Update
 -------------
 
@@ -103,9 +98,9 @@ You will likely have to restart or re-login for the autocompletion to start work
 
          .. code-block:: bash
 
-               eval "$(_ESPTOOL_PY_COMPLETE=bash_source esptool)"
-               eval "$(_ESPSECURE_PY_COMPLETE=bash_source espsecure)"
-               eval "$(_ESPEFUSE_PY_COMPLETE=bash_source espefuse)"
+               eval "$(_ESPTOOL_COMPLETE=bash_source esptool)"
+               eval "$(_ESPSECURE_COMPLETE=bash_source espsecure)"
+               eval "$(_ESPEFUSE_COMPLETE=bash_source espefuse)"
 
 
    .. group-tab:: Zsh
@@ -123,18 +118,18 @@ You will likely have to restart or re-login for the autocompletion to start work
 
       .. code-block:: bash
 
-         eval "$(_ESPTOOL_PY_COMPLETE=zsh_source esptool)"
-         eval "$(_ESPSECURE_PY_COMPLETE=zsh_source espsecure)"
-         eval "$(_ESPEFUSE_PY_COMPLETE=zsh_source espefuse)"
+         eval "$(_ESPTOOL_COMPLETE=zsh_source esptool)"
+         eval "$(_ESPSECURE_COMPLETE=zsh_source espsecure)"
+         eval "$(_ESPEFUSE_COMPLETE=zsh_source espefuse)"
 
 
    .. group-tab:: Fish
 
       .. code-block:: bash
 
-         _ESPTOOL_PY_COMPLETE=fish_source esptool | source
-         _ESPSECURE_PY_COMPLETE=fish_source espsecure | source
-         _ESPEFUSE_PY_COMPLETE=fish_source espefuse | source
+         _ESPTOOL_COMPLETE=fish_source esptool | source
+         _ESPSECURE_COMPLETE=fish_source espsecure | source
+         _ESPEFUSE_COMPLETE=fish_source espefuse | source
 
 
 

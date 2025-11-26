@@ -60,7 +60,7 @@ class ESP32C5ROM(ESP32C6ROM):
     PCR_SYSCLK_XTAL_FREQ_V = 0x7F << 24
     PCR_SYSCLK_XTAL_FREQ_S = 24
 
-    UARTDEV_BUF_NO = 0x4085F51C  # Variable in ROM .bss which indicates the port in use
+    UARTDEV_BUF_NO = 0x4085F514  # Variable in ROM .bss which indicates the port in use
 
     FLASH_FREQUENCY = {
         "80m": 0xF,
@@ -145,7 +145,12 @@ class ESP32C5ROM(ESP32C6ROM):
         ESPLoader.hard_reset(self, self.uses_usb_jtag_serial())
 
     def change_baud(self, baud):
-        if not self.IS_STUB:
+        if self.secure_download_mode:  # ESPTOOL-1231
+            log.warning(
+                "Baud rate change is not supported in secure download mode. "
+                "Keeping 115200 baud."
+            )
+        elif not self.IS_STUB:
             crystal_freq_rom_expect = self.get_crystal_freq_rom_expect()
             crystal_freq_detect = self.get_crystal_freq()
             log.print(
