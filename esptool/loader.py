@@ -212,6 +212,7 @@ class ESPLoader:
 
     CHIP_NAME = "Espressif device"
     IS_STUB = False
+    STUB_SUPPORTS_0xFF_ESCAPE = False  # Flag indicating if stub supports 0xFF escaping
     STUB_CLASS: type["ESPLoader"] | None = None
     BOOTLOADER_IMAGE: type | None = None
     IMAGE_CHIP_ID: int | None = None
@@ -432,11 +433,12 @@ class ESPLoader:
 
     def write(self, packet):
         """Write bytes to the serial port while performing SLIP escaping"""
-        buf = (
-            b"\xc0"
-            + (packet.replace(b"\xdb", b"\xdb\xdd").replace(b"\xc0", b"\xdb\xdc"))
-            + b"\xc0"
-        )
+        # Standard SLIP escaping
+        escaped = packet.replace(b"\xdb", b"\xdb\xdd").replace(b"\xc0", b"\xdb\xdc")
+        # Only escape 0xFF if stub supports it (version 2+)
+        if self.STUB_SUPPORTS_0xFF_ESCAPE:
+            escaped = escaped.replace(b"\xff", b"\xdb\xde")
+        buf = b"\xc0" + escaped + b"\xc0"
         self.trace(f"{f'Write {len(buf)} bytes:':<21} {HexFormatter(buf)}")
         self._port.write(buf)
 
@@ -1339,7 +1341,10 @@ class ESPLoader:
             self.write_reg(rom_spiflash_legacy_funcs_read_ptr, stored_read_pointer)
         log.stage(finish=True)
         log.print("Stub flasher running.")
-        return self.STUB_CLASS(self) if self.STUB_CLASS is not None else self
+        stub_instance = self.STUB_CLASS(self) if self.STUB_CLASS is not None else self
+        # Enable 0xFF escaping when running stub (new stubs support it, old stubs ignore it on read)
+        stub_instance.STUB_SUPPORTS_0xFF_ESCAPE = True
+        return stub_instance
 
     @stub_and_esp32_function_only
     def flash_defl_begin(self, size, compsize, offset):
@@ -1842,6 +1847,8 @@ class StubMixin:
         self._port = rom_loader._port
         self._trace_enabled = rom_loader._trace_enabled
         self.cache = rom_loader.cache
+        # Enable 0xFF escaping when running stub
+        self.STUB_SUPPORTS_0xFF_ESCAPE = True
         self.flush_input()  # resets _slip_reader
 
     def stub_json_name(self):
@@ -1930,6 +1937,8 @@ def slip_reader(port, trace_function):
                     partial_packet += b"\xc0"
                 elif b == b"\xdd":
                     partial_packet += b"\xdb"
+                elif b == b"\xde":
+                    partial_packet += b"\xff"
                 else:
                     trace_function(f"Read invalid data: {HexFormatter(read_bytes)}")
                     remaining_data = port.read(port.inWaiting())
