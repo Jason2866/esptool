@@ -591,6 +591,36 @@ class ESPLoader:
     def flush_input(self):
         self._port.flushInput()
         self._slip_reader = slip_reader(self._port, self.trace)
+    
+    def flush_input_aggressive(self):
+        """Aggressively flush input by actively reading and discarding data"""
+        # First do standard flush
+        try:
+            self._port.flushInput()
+            self._port.flushOutput()
+        except Exception:
+            pass
+        
+        # Then actively read any remaining data with short timeout
+        original_timeout = self._port.timeout
+        self._port.timeout = 0.05  # 50ms timeout
+        
+        try:
+            # Try to read up to 1KB of stale data directly from port (not SLIP reader)
+            for _ in range(10):
+                try:
+                    data = self._port.read(100)
+                    if not data:
+                        break
+                except Exception:
+                    break
+        except Exception:
+            pass
+        finally:
+            self._port.timeout = original_timeout
+        
+        # Recreate SLIP reader with fresh state
+        self._slip_reader = slip_reader(self._port, self.trace)
 
     def sync(self):
         val, _ = self.command(
@@ -1452,31 +1482,76 @@ class ESPLoader:
         """Reconnect to the ESP device to clear buffers and reset state"""
         log.print("Reconnecting to ESP device...")
         
-        # Flush input and output buffers before closing
+        # Save current baudrate if in stub mode
+        saved_baudrate = None
+        needs_stub_reload = self.IS_STUB
+        
+        if needs_stub_reload:
+            saved_baudrate = self._port.baudrate
+        
+        # Flush input and output buffers
         try:
             self._port.flushInput()
             self._port.flushOutput()
         except Exception:
-            pass  # Ignore errors if port is already in bad state
+            pass
         
-        # Close and reopen port
-        if hasattr(self._port, 'close'):
-            self._port.close()
-        
-        time.sleep(0.5)  # Wait for port to fully close
-        
-        # Reopen port
-        if hasattr(self._port, 'open'):
-            self._port.open()
-        
-        # Flush buffers again after reopening
-        self.flush_input()
-        
-        # Small delay to let buffers settle
         time.sleep(0.1)
         
-        # Sync with bootloader
-        self.sync()
+        # If we're in stub mode, we need to reload it after reset
+        if needs_stub_reload:
+            # Reset to ROM baudrate
+            self._set_port_baudrate(115200)
+            time.sleep(0.05)
+            
+            # Flush again after baudrate change
+            self.flush_input()
+            time.sleep(0.1)
+            
+            # Get the ROM loader class (stub inherits from ROM)
+            # Find the base ROM class by looking at the MRO
+            rom_class = None
+            for base in self.__class__.__mro__:
+                if hasattr(base, 'IS_STUB') and not base.IS_STUB and base.__name__ != 'ESPLoader':
+                    rom_class = base
+                    break
+            
+            if rom_class is None:
+                raise FatalError("Cannot find ROM loader class for stub reload")
+            
+            # Create a new ROM loader instance with the same port
+            rom_loader = rom_class(self._port, self._port.baudrate, self._trace_enabled)
+            
+            # Perform connect sequence (includes reset and sync)
+            rom_loader.connect(mode="default-reset", attempts=3, detecting=False, warnings=False)
+            
+            # Reload stub
+            stub_loader = rom_loader.run_stub()
+            
+            # Give stub time to stabilize
+            time.sleep(0.2)
+            
+            # Flush buffers before changing baudrate
+            stub_loader.flush_input()
+            time.sleep(0.1)
+            
+            # Restore baudrate
+            if saved_baudrate and saved_baudrate != 115200:
+                stub_loader.change_baud(saved_baudrate)
+                # Extra flush and delay after baudrate change
+                time.sleep(0.2)
+                stub_loader.flush_input()
+                time.sleep(0.1)
+            
+            # Update self to point to new stub loader
+            self.__dict__.update(stub_loader.__dict__)
+        else:
+            # In ROM mode, just sync
+            self.flush_input()
+            time.sleep(0.1)
+            self.sync()
+        
+        log.print("Reconnection complete")
 
     def read_flash_slow(self, offset, length, progress_fn) -> bytes:
         raise NotImplementedInROMError(self, self.read_flash_slow)
@@ -1486,8 +1561,34 @@ class ESPLoader:
             return self.read_flash_slow(offset, length, progress_fn)  # ROM-only routine
 
         # Flush buffers before starting to ensure clean state
-        self.flush_input()
-        time.sleep(0.1)
+        # Use aggressive flush to actively read and discard stale data
+        self.flush_input_aggressive()
+        time.sleep(0.2)
+        self.flush_input_aggressive()
+        
+        # Extra delay to let serial line stabilize after high baudrate
+        # High baudrates (2M+) need more time to stabilize
+        time.sleep(0.5)
+        
+        # Send multiple simple commands to verify communication is stable
+        # This helps detect if the baudrate change caused issues
+        comm_test_passed = False
+        for attempt in range(3):
+            try:
+                self.read_reg(self.CHIP_DETECT_MAGIC_REG_ADDR)
+                log.print(f"Communication test passed (attempt {attempt + 1})")
+                comm_test_passed = True
+                break
+            except Exception as e:
+                log.warning(f"Communication test failed (attempt {attempt + 1}): {e}")
+                self.flush_input_aggressive()
+                time.sleep(0.5)
+        
+        if not comm_test_passed:
+            log.warning("All communication tests failed, proceeding anyway but expect errors...")
+        
+        # Final stabilization delay
+        time.sleep(0.3)
 
         # Use chunked reading for large reads to prevent buffer issues
         CHUNK_SIZE = 0x10000  # 64KB chunks
@@ -1524,7 +1625,7 @@ class ESPLoader:
                     # now we expect (chunk_size // block_size) SLIP frames with the data
                     data = b""
                     while len(data) < chunk_size:
-                        self._port.timeout = 1  # Reduced timeout for faster detection
+                        self._port.timeout = 1  # 1 sec timeout
                         p = self.read()
                         data += p
                         data_len = len(data)
@@ -1534,6 +1635,8 @@ class ESPLoader:
                                 f"bytes but received {len(p):#x} bytes."
                             )
                         self.write(struct.pack("<I", data_len))
+                        if progress_fn and (data_len % 1024 == 0 or data_len == chunk_size):
+                            progress_fn(len(all_data) + data_len, length, offset)
                     if len(data) > chunk_size:
                         raise FatalError("Read more than expected.")
 
@@ -1556,7 +1659,7 @@ class ESPLoader:
                     # Check if it's a retryable error (timeout, invalid packet, corrupt data)
                     error_str = str(e).lower()
                     is_timeout = "timeout" in error_str or isinstance(e, serial.SerialTimeoutException)
-                    is_invalid_packet = "invalid head of packet" in error_str
+                    is_invalid_packet = "invalid head of packet" in error_str or "serial data stream stopped" in error_str
                     is_corrupt_data = "corrupt data" in error_str or "digest mismatch" in error_str
                     
                     is_retryable = is_timeout or is_invalid_packet or is_corrupt_data
@@ -1565,18 +1668,44 @@ class ESPLoader:
                         error_type = "Timeout" if is_timeout else "Packet corruption"
                         log.warning(
                             f"⚠️  {error_type} at 0x{current_offset:x}: {e}. "
-                            f"Reconnecting and retrying (attempt {retry_count}/{MAX_RETRIES})..."
+                            f"Retrying (attempt {retry_count}/{MAX_RETRIES})..."
                         )
                         
                         try:
-                            # Flush buffers before reconnecting to clear any corrupt data
-                            self.flush_input()
+                            # FIRST: Immediately recreate SLIP reader to recover from bad state
+                            try:
+                                self._port.flushInput()
+                                self._port.flushOutput()
+                            except Exception:
+                                pass
+                            self._slip_reader = slip_reader(self._port, self.trace)
                             time.sleep(0.1)
                             
-                            self.reconnect()
+                            # For packet corruption, just flush buffers multiple times
+                            # Don't reconnect unless it's a timeout
+                            if is_invalid_packet or is_corrupt_data:
+                                # Aggressive buffer flushing for corruption
+                                for _ in range(2):
+                                    self.flush_input_aggressive()
+                                    time.sleep(0.1)
+                                time.sleep(0.2)
+                            else:
+                                # For timeouts, do a full reconnect
+                                self.flush_input()
+                                time.sleep(0.1)
+                                
+                                self.reconnect()
+                                
+                                # Give extra time after reconnect before retrying
+                                time.sleep(0.5)
+                                
+                                # Flush again to be absolutely sure
+                                self.flush_input()
+                                time.sleep(0.1)
+                            
                             # Continue to retry the same chunk
                         except Exception as reconnect_err:
-                            raise FatalError(f"Reconnect failed: {reconnect_err}")
+                            raise FatalError(f"Reconnect/recovery failed: {reconnect_err}")
                     elif is_retryable:
                         raise FatalError(
                             f"Failed to read chunk at 0x{current_offset:x} after {MAX_RETRIES} retries: {e}"
