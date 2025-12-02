@@ -1448,6 +1448,28 @@ class ESPLoader:
             timeout=timeout,
         )
 
+    def reconnect(self):
+        """Reconnect to the ESP device to clear buffers and reset state"""
+        log.info("Reconnecting to ESP device...")
+        
+        # Save current state
+        saved_chip_name = getattr(self, 'CHIP_NAME', None)
+        
+        # Close and reopen port
+        if hasattr(self._port, 'close'):
+            self._port.close()
+        
+        time.sleep(0.5)  # Wait for port to fully close
+        
+        # Reopen port
+        if hasattr(self._port, 'open'):
+            self._port.open()
+        
+        # Sync with bootloader
+        self.sync()
+            
+        log.debug("Reconnection successful")
+
     def read_flash_slow(self, offset, length, progress_fn) -> bytes:
         raise NotImplementedInROMError(self, self.read_flash_slow)
 
@@ -1455,40 +1477,106 @@ class ESPLoader:
         if not self.IS_STUB:
             return self.read_flash_slow(offset, length, progress_fn)  # ROM-only routine
 
-        # issue a standard bootloader command to trigger the read
-        self.check_command(
-            "read flash",
-            self.ESP_CMDS["READ_FLASH"],
-            struct.pack("<IIII", offset, length, self.FLASH_SECTOR_SIZE, 64),
-        )
-        # now we expect (length // block_size) SLIP frames with the data
-        data = b""
-        while len(data) < length:
-            self._port.timeout = 3
-            p = self.read()
-            data += p
-            data_len = len(data)
-            if data_len < length and len(p) < self.FLASH_SECTOR_SIZE:
-                raise FatalError(
-                    f"Corrupt data, expected {self.FLASH_SECTOR_SIZE:#x} "
-                    f"bytes but received {len(p):#x} bytes."
-                )
-            self.write(struct.pack("<I", data_len))
-            if progress_fn and (data_len % 1024 == 0 or data_len == length):
-                progress_fn(data_len, length, offset)
-        if len(data) > length:
-            raise FatalError("Read more than expected.")
+        # Use chunked reading for large reads to prevent buffer issues
+        CHUNK_SIZE = 0x10000  # 64KB chunks
+        
+        all_data = b""
+        current_offset = offset
+        remaining_size = length
 
-        digest_frame = self.read()
-        if len(digest_frame) != 16:
-            raise FatalError(f"Expected digest, got: {hexify(digest_frame)}")
-        expected_digest = hexify(digest_frame).upper()
-        digest = hashlib.md5(data).hexdigest().upper()
-        if digest != expected_digest:
-            raise FatalError(
-                f"Digest mismatch: expected {expected_digest}, got {digest}"
-            )
-        return data
+        while remaining_size > 0:
+            # Reconnect every 4MB to prevent buffer issues
+            if len(all_data) > 0 and len(all_data) % (4 * 1024 * 1024) == 0:
+                log.info(f"Read {len(all_data)} bytes. Reconnecting to clear buffers...")
+                try:
+                    self.reconnect()
+                except Exception as e:
+                    raise FatalError(f"Reconnect failed during read: {e}")
+            
+            chunk_size = min(CHUNK_SIZE, remaining_size)
+            chunk_success = False
+            retry_count = 0
+            MAX_RETRIES = 3
+            
+            # Retry loop for this chunk
+            while not chunk_success and retry_count <= MAX_RETRIES:
+                try:
+                    log.debug(f"Reading chunk at 0x{current_offset:x}, size: 0x{chunk_size:x}")
+                    
+                    # issue a standard bootloader command to trigger the read
+                    self.check_command(
+                        "read flash",
+                        self.ESP_CMDS["READ_FLASH"],
+                        struct.pack("<IIII", current_offset, chunk_size, self.FLASH_SECTOR_SIZE, 64),
+                    )
+                    # now we expect (chunk_size // block_size) SLIP frames with the data
+                    data = b""
+                    while len(data) < chunk_size:
+                        self._port.timeout = 1  # Reduced timeout for faster detection
+                        p = self.read()
+                        data += p
+                        data_len = len(data)
+                        if data_len < chunk_size and len(p) < self.FLASH_SECTOR_SIZE:
+                            raise FatalError(
+                                f"Corrupt data, expected {self.FLASH_SECTOR_SIZE:#x} "
+                                f"bytes but received {len(p):#x} bytes."
+                            )
+                        self.write(struct.pack("<I", data_len))
+                    if len(data) > chunk_size:
+                        raise FatalError("Read more than expected.")
+
+                    digest_frame = self.read()
+                    if len(digest_frame) != 16:
+                        raise FatalError(f"Expected digest, got: {hexify(digest_frame)}")
+                    expected_digest = hexify(digest_frame).upper()
+                    digest = hashlib.md5(data).hexdigest().upper()
+                    if digest != expected_digest:
+                        raise FatalError(
+                            f"Digest mismatch: expected {expected_digest}, got {digest}"
+                        )
+                    
+                    # Chunk read successfully
+                    chunk_success = True
+                    
+                except (serial.SerialTimeoutException, FatalError) as e:
+                    retry_count += 1
+                    
+                    # Check if it's a timeout error
+                    error_str = str(e).lower()
+                    is_timeout = "timeout" in error_str or isinstance(e, serial.SerialTimeoutException)
+                    
+                    if is_timeout and retry_count <= MAX_RETRIES:
+                        log.warning(
+                            f"⚠️  Timeout error at 0x{current_offset:x}. "
+                            f"Reconnecting and retrying (attempt {retry_count}/{MAX_RETRIES})..."
+                        )
+                        
+                        try:
+                            self.reconnect()
+                            # Continue to retry the same chunk
+                        except Exception as reconnect_err:
+                            raise FatalError(f"Reconnect failed: {reconnect_err}")
+                    elif is_timeout:
+                        raise FatalError(
+                            f"Failed to read chunk at 0x{current_offset:x} after {MAX_RETRIES} retries: {e}"
+                        )
+                    else:
+                        # Non-timeout error, don't retry
+                        raise e
+            
+            # Append chunk to all data
+            all_data += data
+            
+            # Update progress
+            if progress_fn:
+                progress_fn(len(all_data), length, offset)
+            
+            current_offset += chunk_size
+            remaining_size -= chunk_size
+            
+            log.debug(f"Chunk complete. Total progress: 0x{len(all_data):x}/0x{length:x} bytes")
+        
+        return all_data
 
     def flash_spi_attach(self, hspi_arg):
         """Send SPI attach command to enable the SPI flash pins
