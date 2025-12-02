@@ -1680,28 +1680,19 @@ class ESPLoader:
                                 pass
                             self._slip_reader = slip_reader(self._port, self.trace)
                             time.sleep(0.1)
-                            
-                            # For packet corruption, just flush buffers multiple times
-                            # Don't reconnect unless it's a timeout
-                            if is_invalid_packet or is_corrupt_data:
-                                # Aggressive buffer flushing for corruption
-                                for _ in range(2):
-                                    self.flush_input_aggressive()
-                                    time.sleep(0.1)
-                                time.sleep(0.2)
-                            else:
-                                # For timeouts, do a full reconnect
-                                self.flush_input()
-                                time.sleep(0.1)
+
+                            # For timeouts, do a full reconnect
+                            self.flush_input()
+                            time.sleep(0.1)
                                 
-                                self.reconnect()
+                            self.reconnect()
                                 
-                                # Give extra time after reconnect before retrying
-                                time.sleep(0.5)
+                            # Give extra time after reconnect before retrying
+                            time.sleep(0.5)
                                 
-                                # Flush again to be absolutely sure
-                                self.flush_input()
-                                time.sleep(0.1)
+                            # Flush again to be absolutely sure
+                            self.flush_input()
+                            time.sleep(0.1)
                             
                             # Continue to retry the same chunk
                         except Exception as reconnect_err:
