@@ -1450,7 +1450,7 @@ class ESPLoader:
 
     def reconnect(self):
         """Reconnect to the ESP device to clear buffers and reset state"""
-        log.info("Reconnecting to ESP device...")
+        log.print("Reconnecting to ESP device...")
         
         # Save current state
         saved_chip_name = getattr(self, 'CHIP_NAME', None)
@@ -1467,8 +1467,6 @@ class ESPLoader:
         
         # Sync with bootloader
         self.sync()
-            
-        log.debug("Reconnection successful")
 
     def read_flash_slow(self, offset, length, progress_fn) -> bytes:
         raise NotImplementedInROMError(self, self.read_flash_slow)
@@ -1487,7 +1485,7 @@ class ESPLoader:
         while remaining_size > 0:
             # Reconnect every 4MB to prevent buffer issues
             if len(all_data) > 0 and len(all_data) % (4 * 1024 * 1024) == 0:
-                log.info(f"Read {len(all_data)} bytes. Reconnecting to clear buffers...")
+                log.print(f"Read {len(all_data)} bytes. Reconnecting to clear buffers...")
                 try:
                     self.reconnect()
                 except Exception as e:
@@ -1501,7 +1499,7 @@ class ESPLoader:
             # Retry loop for this chunk
             while not chunk_success and retry_count <= MAX_RETRIES:
                 try:
-                    log.debug(f"Reading chunk at 0x{current_offset:x}, size: 0x{chunk_size:x}")
+                    self.trace(f"Reading chunk at 0x{current_offset:x}, size: 0x{chunk_size:x}")
                     
                     # issue a standard bootloader command to trigger the read
                     self.check_command(
@@ -1574,7 +1572,7 @@ class ESPLoader:
             current_offset += chunk_size
             remaining_size -= chunk_size
             
-            log.debug(f"Chunk complete. Total progress: 0x{len(all_data):x}/0x{length:x} bytes")
+            self.trace(f"Chunk complete. Total progress: 0x{len(all_data):x}/0x{length:x} bytes")
         
         return all_data
 
