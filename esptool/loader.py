@@ -1452,8 +1452,12 @@ class ESPLoader:
         """Reconnect to the ESP device to clear buffers and reset state"""
         log.print("Reconnecting to ESP device...")
         
-        # Save current state
-        saved_chip_name = getattr(self, 'CHIP_NAME', None)
+        # Flush input and output buffers before closing
+        try:
+            self._port.flushInput()
+            self._port.flushOutput()
+        except Exception:
+            pass  # Ignore errors if port is already in bad state
         
         # Close and reopen port
         if hasattr(self._port, 'close'):
@@ -1465,6 +1469,12 @@ class ESPLoader:
         if hasattr(self._port, 'open'):
             self._port.open()
         
+        # Flush buffers again after reopening
+        self.flush_input()
+        
+        # Small delay to let buffers settle
+        time.sleep(0.1)
+        
         # Sync with bootloader
         self.sync()
 
@@ -1474,6 +1484,10 @@ class ESPLoader:
     def read_flash(self, offset, length, progress_fn=None) -> bytes:
         if not self.IS_STUB:
             return self.read_flash_slow(offset, length, progress_fn)  # ROM-only routine
+
+        # Flush buffers before starting to ensure clean state
+        self.flush_input()
+        time.sleep(0.1)
 
         # Use chunked reading for large reads to prevent buffer issues
         CHUNK_SIZE = 0x10000  # 64KB chunks
@@ -1536,30 +1550,39 @@ class ESPLoader:
                     # Chunk read successfully
                     chunk_success = True
                     
-                except (serial.SerialTimeoutException, FatalError) as e:
+                except (serial.SerialTimeoutException, FatalError, Exception) as e:
                     retry_count += 1
                     
-                    # Check if it's a timeout error
+                    # Check if it's a retryable error (timeout, invalid packet, corrupt data)
                     error_str = str(e).lower()
                     is_timeout = "timeout" in error_str or isinstance(e, serial.SerialTimeoutException)
+                    is_invalid_packet = "invalid head of packet" in error_str
+                    is_corrupt_data = "corrupt data" in error_str or "digest mismatch" in error_str
                     
-                    if is_timeout and retry_count <= MAX_RETRIES:
+                    is_retryable = is_timeout or is_invalid_packet or is_corrupt_data
+                    
+                    if is_retryable and retry_count <= MAX_RETRIES:
+                        error_type = "Timeout" if is_timeout else "Packet corruption"
                         log.warning(
-                            f"⚠️  Timeout error at 0x{current_offset:x}. "
+                            f"⚠️  {error_type} at 0x{current_offset:x}: {e}. "
                             f"Reconnecting and retrying (attempt {retry_count}/{MAX_RETRIES})..."
                         )
                         
                         try:
+                            # Flush buffers before reconnecting to clear any corrupt data
+                            self.flush_input()
+                            time.sleep(0.1)
+                            
                             self.reconnect()
                             # Continue to retry the same chunk
                         except Exception as reconnect_err:
                             raise FatalError(f"Reconnect failed: {reconnect_err}")
-                    elif is_timeout:
+                    elif is_retryable:
                         raise FatalError(
                             f"Failed to read chunk at 0x{current_offset:x} after {MAX_RETRIES} retries: {e}"
                         )
                     else:
-                        # Non-timeout error, don't retry
+                        # Non-retryable error, fail immediately
                         raise e
             
             # Append chunk to all data
