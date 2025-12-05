@@ -48,7 +48,18 @@ static uint8_t calculate_checksum(uint8_t *buf, int length)
   return res;
 }
 
-#if ESP32P4
+#if ESP32C5 || ESP32P4RC1
+/* Helper to call the correct OPIFLASH_EXEC_CMD offset in ROM based on the ECO version */
+#define OPIFLASH_EXEC_CMD_CALL(fn) \
+  fn(spi_num, mode, \
+      cmd, cmd_bit_len, \
+      addr, addr_bit_len, \
+      dummy_bits, \
+      mosi_data, mosi_bit_len, \
+      miso_data, miso_bit_len, \
+      cs_mask, \
+      is_write_erase_operation)
+
 void esp_rom_opiflash_exec_cmd(int spi_num, SpiFlashRdMode mode,
   uint32_t cmd, int cmd_bit_len,
   uint32_t addr, int addr_bit_len,
@@ -58,28 +69,21 @@ void esp_rom_opiflash_exec_cmd(int spi_num, SpiFlashRdMode mode,
   uint32_t cs_mask,
   bool is_write_erase_operation)
 {
-
-  if (_rom_eco_version == 2) {
-      esp_rom_opiflash_exec_cmd_eco2(spi_num, mode,
-          cmd, cmd_bit_len,
-          addr, addr_bit_len,
-          dummy_bits,
-          mosi_data, mosi_bit_len,
-          miso_data, miso_bit_len,
-          cs_mask,
-          is_write_erase_operation);
+#if ESP32C5
+  if (_rom_eco_version == 3) {
+      OPIFLASH_EXEC_CMD_CALL(esp_rom_opiflash_exec_cmd_eco3);
   } else {
-      esp_rom_opiflash_exec_cmd_eco1(spi_num, mode,
-          cmd, cmd_bit_len,
-          addr, addr_bit_len,
-          dummy_bits,
-          mosi_data, mosi_bit_len,
-          miso_data, miso_bit_len,
-          cs_mask,
-          is_write_erase_operation);
+      OPIFLASH_EXEC_CMD_CALL(esp_rom_opiflash_exec_cmd_eco2);
   }
+#elif ESP32P4RC1
+  if (_rom_eco_version == 2) {
+      OPIFLASH_EXEC_CMD_CALL(esp_rom_opiflash_exec_cmd_eco2);
+  } else {
+      OPIFLASH_EXEC_CMD_CALL(esp_rom_opiflash_exec_cmd_eco1);
+  }
+#endif
 }
-#endif // ESP32P4
+#endif // ESP32C5 || ESP32P4RC1
 
 #if USE_MAX_CPU_FREQ
 static bool can_use_max_cpu_freq()
@@ -156,7 +160,7 @@ static void disable_watchdogs()
 }
 #endif // WITH_USB_JTAG_SERIAL
 
-#if (ESP32S3 && !ESP32S3BETA2) || ESP32P4 || ESP32C5
+#if (ESP32S3 && !ESP32S3BETA2) || ESP32P4 || ESP32P4RC1 || ESP32C5
 bool large_flash_mode = false;
 
 bool flash_larger_than_16mb()
@@ -174,7 +178,7 @@ bool flash_larger_than_16mb()
   uint8_t flid_lowbyte = (flash_id >> 16) & 0xFF;
   return ((flid_lowbyte >= 0x19 && flid_lowbyte < 0x30) || (flid_lowbyte >= 0x39)); // See DETECTED_FLASH_SIZES in esptool
 }
-#endif // (ESP32S3 && !ESP32S3BETA2) || ESP32P4 || ESP32C5
+#endif // (ESP32S3 && !ESP32S3BETA2) || ESP32P4 || ESP32P4RC1 || ESP32C5
 
 static void stub_handle_rx_byte(char byte)
 {
@@ -317,12 +321,16 @@ void cmd_loop() {
          1 - num_blocks (ignored)
          2 - block_size (should be MAX_WRITE_BLOCK, relies on num_blocks * block_size >= erase_size)
          3 - offset (used as-is)
-       */
-        if (command->data_len == 16 && data_words[2] > MAX_WRITE_BLOCK) {
-            error = ESP_BAD_BLOCKSIZE;
-        } else {
-            error = verify_data_len(command, 16) || handle_flash_begin(data_words[0], data_words[3]);
-        }
+         4 - encrypt_flag (optional, if data_len == 20)
+      */
+      if (command->data_len != 16 && command->data_len != 20) {
+          error = ESP_BAD_DATA_LEN;
+      } else if (data_words[2] > MAX_WRITE_BLOCK) {
+          error = ESP_BAD_BLOCKSIZE;
+      } else {
+          bool is_extended = (command->data_len == 20);
+          error = handle_flash_begin(data_words[0], data_words[3], is_extended ? data_words[4] : 0);
+      }
       break;
     case ESP_FLASH_DEFLATED_BEGIN:
       /* parameters:
@@ -330,18 +338,22 @@ void cmd_loop() {
          1 - num_blocks (based on compressed size)
          2 - block_size (should be MAX_WRITE_BLOCK, total bytes over serial = num_blocks * block_size)
          3 - offset (used as-is)
+         4 - encrypt_flag (optional, if data_len == 20)
       */
-        if (command->data_len == 16 && data_words[2] > MAX_WRITE_BLOCK) {
-            error = ESP_BAD_BLOCKSIZE;
-        } else {
-            error = verify_data_len(command, 16) || handle_flash_deflated_begin(data_words[0], data_words[1] * data_words[2], data_words[3]);
-        }
-        break;
+      if (command->data_len != 16 && command->data_len != 20) {
+          error = ESP_BAD_DATA_LEN;
+      } else if (data_words[2] > MAX_WRITE_BLOCK) {
+          error = ESP_BAD_BLOCKSIZE;
+      } else {
+          bool is_extended = (command->data_len == 20);
+          error = handle_flash_deflated_begin(data_words[0], data_words[1] * data_words[2], data_words[3], is_extended ? data_words[4] : 0);
+      }
+      break;
+#if !ESP8266
+    case ESP_FLASH_ENCRYPT_DATA: /* fallthrough, deprecated */
+#endif
     case ESP_FLASH_DATA:
     case ESP_FLASH_DEFLATED_DATA:
-#if !ESP8266
-    case ESP_FLASH_ENCRYPT_DATA:
-#endif
 
       /* ACK DATA commands immediately, then process them a few lines down,
          allowing next command to buffer */
@@ -417,16 +429,15 @@ void cmd_loop() {
         handle_flash_read(data_words[0], data_words[1], data_words[2],
                           data_words[3]);
         break;
+#if !ESP8266
+      case ESP_FLASH_ENCRYPT_DATA: /* deprecated */
+        handle_flash_encrypt_data(command->data_buf + 16, command->data_len - 16);
+        break;
+#endif
       case ESP_FLASH_DATA:
         /* drop into flashing mode, discard 16 byte payload header */
         handle_flash_data(command->data_buf + 16, command->data_len - 16);
         break;
-#if !ESP8266
-      case ESP_FLASH_ENCRYPT_DATA:
-        /* write encrypted data */
-        handle_flash_encrypt_data(command->data_buf + 16, command->data_len -16);
-        break;
-#endif
       case ESP_FLASH_DEFLATED_DATA:
         handle_flash_deflated_data(command->data_buf + 16, command->data_len - 16);
         break;
@@ -556,7 +567,7 @@ void stub_main()
       esp_rom_opiflash_legacy_driver_init(&flash_driver);
       esp_rom_opiflash_wait_idle();
     }
-  #elif ESP32P4
+  #elif ESP32P4 || ESP32P4RC1
     large_flash_mode = flash_larger_than_16mb();
   #elif ESP32C5
     // Older ECOs either do not have the necessary functions in ROM or the functions did not work correctly

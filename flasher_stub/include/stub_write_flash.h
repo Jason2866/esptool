@@ -14,9 +14,9 @@ bool is_in_flash_mode(void);
 
 esp_command_error get_flash_error(void);
 
-esp_command_error handle_flash_begin(uint32_t total_size, uint32_t offset);
+esp_command_error handle_flash_begin(uint32_t total_size, uint32_t offset, uint32_t encrypt_flag);
 
-esp_command_error handle_flash_deflated_begin(uint32_t uncompressed_size, uint32_t compressed_size, uint32_t offset);
+esp_command_error handle_flash_deflated_begin(uint32_t uncompressed_size, uint32_t compressed_size, uint32_t offset, uint32_t encrypt_flag);
 
 void handle_flash_data(void *data_buf, uint32_t length);
 
@@ -26,7 +26,7 @@ void handle_flash_encrypt_data(void *data_buf, uint32_t length);
 
 void handle_flash_deflated_data(void *data_buf, uint32_t length);
 
-#if ESP32P4 || ESP32C5
+#if ESP32P4 || ESP32P4RC1 || ESP32C5
 void spi_write_enable(void);
 #endif
 

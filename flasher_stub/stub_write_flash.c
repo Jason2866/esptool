@@ -36,6 +36,8 @@ static struct {
   tinfl_decompressor inflator;
   /* number of compressed bytes remaining to read */
   uint32_t remaining_compressed;
+  /* flag to indicate if flash data should be encrypted */
+  bool encrypt_mode;
 } fs;
 
 /* SPI status bits */
@@ -136,7 +138,7 @@ SpiFlashOpResult SPIUnlock(void)
 }
 #endif // ESP32_OR_LATER
 
-#if (ESP32S3 && !ESP32S3BETA2) || ESP32P4 || ESP32C5
+#if (ESP32S3 && !ESP32S3BETA2) || ESP32P4 || ESP32P4RC1 || ESP32C5
 static esp_rom_spiflash_result_t page_program_internal(int spi_num, uint32_t spi_addr, uint8_t* addr_source, uint32_t byte_length)
 {
     uint32_t  temp_addr;
@@ -295,15 +297,22 @@ done_encrypt_write_4B:
   esp_rom_spiflash_write_encrypted_disable();
   return result;
 }
-#endif // (ESP32S3 && !ESP32S3BETA2) || ESP32P4 || ESP32C5
+#endif // (ESP32S3 && !ESP32S3BETA2) || ESP32P4 || ESP32P4RC1 || ESP32C5
 
-esp_command_error handle_flash_begin(uint32_t total_size, uint32_t offset) {
+esp_command_error handle_flash_begin(uint32_t total_size, uint32_t offset, uint32_t encrypt_flag) {
   fs.in_flash_mode = true;
   fs.next_write = offset;
   fs.next_erase_sector = offset / FLASH_SECTOR_SIZE;
   fs.remaining = total_size;
   fs.remaining_erase_sector = ((offset % FLASH_SECTOR_SIZE) + total_size + FLASH_SECTOR_SIZE - 1) / FLASH_SECTOR_SIZE;
   fs.last_error = ESP_OK;
+
+#if !ESP8266
+  fs.encrypt_mode = (encrypt_flag != 0);
+#else
+  fs.encrypt_mode = false;  /* ESP8266 doesn't support encryption */
+  (void)encrypt_flag;  /* suppress unused parameter warning */
+#endif
 
 #if defined(ESP32S3) && !defined(ESP32S3BETA2)
   if (large_flash_mode) {
@@ -322,8 +331,8 @@ esp_command_error handle_flash_begin(uint32_t total_size, uint32_t offset) {
   return ESP_OK;
 }
 
-esp_command_error handle_flash_deflated_begin(uint32_t uncompressed_size, uint32_t compressed_size, uint32_t offset) {
-  esp_command_error err = handle_flash_begin(uncompressed_size, offset);
+esp_command_error handle_flash_deflated_begin(uint32_t uncompressed_size, uint32_t compressed_size, uint32_t offset, uint32_t encrypt_flag) {
+  esp_command_error err = handle_flash_begin(uncompressed_size, offset, encrypt_flag);
   tinfl_init(&fs.inflator);
   fs.remaining_compressed = compressed_size;
   return err;
@@ -402,7 +411,7 @@ static void start_next_erase(void)
           WRITE_REG(SPI_CMD_REG, command);
           while(READ_REG(SPI_CMD_REG) != 0) { }
       }
-      #elif ESP32P4 || ESP32C5
+      #elif ESP32P4 || ESP32P4RC1 || ESP32C5
       if (large_flash_mode) {
         esp_rom_spiflash_wait_idle();
         spi_write_enable();
@@ -475,6 +484,14 @@ static void start_next_erase(void)
    Updates fs.remaining_erase_sector, fs.next_write, and fs.remaining
 */
 void handle_flash_data(void *data_buf, uint32_t length) {
+  /* Auto-route to encryption if encrypt_mode is set */
+#if !ESP8266
+  if (fs.encrypt_mode) {
+    handle_flash_encrypt_data(data_buf, length);
+    return;
+  }
+#endif
+
   int last_sector;
   uint8_t res = 0;
 
@@ -499,7 +516,7 @@ void handle_flash_data(void *data_buf, uint32_t length) {
     {}
 
   /* do the actual write */
-  #if (ESP32S3 && !ESP32S3BETA2) || ESP32P4 || ESP32C5
+  #if (ESP32S3 && !ESP32S3BETA2) || ESP32P4 || ESP32P4RC1 || ESP32C5
       if (large_flash_mode){
         res = SPIWrite4B(1, fs.next_write, data_buf, length);
       } else {
@@ -551,7 +568,7 @@ void handle_flash_encrypt_data(void *data_buf, uint32_t length) {
   /* do the actual write */
 #if ESP32
   res = esp_rom_spiflash_write_encrypted(fs.next_write, data_buf, length);
-#elif (ESP32S3 && !ESP32S3BETA2) || ESP32P4 || ESP32C5
+#elif (ESP32S3 && !ESP32S3BETA2) || ESP32P4 || ESP32P4RC1 || ESP32C5
   if (large_flash_mode){
     res = SPI_Encrypt_Write_4B(fs.next_write, data_buf, length);
   } else {
