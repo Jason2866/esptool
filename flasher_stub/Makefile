@@ -43,6 +43,7 @@ CROSS_32C6 ?= riscv32-esp-elf-
 CROSS_32C61 ?= riscv32-esp-elf-
 CROSS_32H2 ?= riscv32-esp-elf-
 CROSS_32P4 ?= riscv32-esp-elf-
+CROSS_32P4.rc1 ?= riscv32-esp-elf-
 
 # extra CFLAGS to be passed on the compiler, in addition to the stock ones
 EXTRA_CFLAGS ?=
@@ -140,13 +141,13 @@ $(STUB_ELF_32P4): $(SRCS) $(BUILD_DIR) ld/stub_32p4.ld
 
 $(STUB_ELF_32P4.rc1): $(SRCS) $(BUILD_DIR) ld/stub_32p4.rc1.ld
 	@echo "  CC(32P4.rc1)   $^ -> $@"
-	$(Q) $(CROSS_32P4)gcc $(CFLAGS_ESPRISCV32) -DESP32P4=1 -Tstub_32p4.rc1.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
+	$(Q) $(CROSS_32P4.rc1)gcc $(CFLAGS_ESPRISCV32) -DESP32P4=1 -Tstub_32p4.rc1.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^) $(LDLIBS)
 
-$(STUB_PY): $(STUB_ELF_8266) $(STUB_ELF_32) $(STUB_ELF_32S2) $(STUB_ELF_32S3) $(STUB_ELF_32C3) $(STUB_ELF_32C5) $(STUB_ELF_32C6) $(STUB_ELF_32C61) $(STUB_ELF_32H2) $(STUB_ELF_32C2) $(STUB_ELF_32P4) wrap_stub.py
+$(STUB_PY): $(STUB_ELF_8266) $(STUB_ELF_32) $(STUB_ELF_32S2) $(STUB_ELF_32S3) $(STUB_ELF_32C3) $(STUB_ELF_32C5) $(STUB_ELF_32C6) $(STUB_ELF_32C61) $(STUB_ELF_32H2) $(STUB_ELF_32C2) $(STUB_ELF_32P4) $(STUB_ELF_32P4.rc1) wrap_stub.py
 	@echo "  WRAP $^ -> $@"
 	$(Q) $(WRAP_STUB) --out-file $@ $(filter %.elf,$^)
 
-embed: $(STUB_ELF_8266) $(STUB_ELF_32) $(STUB_ELF_32S2) $(STUB_ELF_32S3) $(STUB_ELF_32C3) $(STUB_ELF_32C5) $(STUB_ELF_32C6) $(STUB_ELF_32C61) $(STUB_ELF_32H2) $(STUB_ELF_32C2) $(STUB_ELF_32P4) wrap_stub.py
+embed: $(STUB_ELF_8266) $(STUB_ELF_32) $(STUB_ELF_32S2) $(STUB_ELF_32S3) $(STUB_ELF_32C3) $(STUB_ELF_32C5) $(STUB_ELF_32C6) $(STUB_ELF_32C61) $(STUB_ELF_32H2) $(STUB_ELF_32C2) $(STUB_ELF_32P4) $(STUB_ELF_32P4.rc1) wrap_stub.py
 	@echo "  WRAP $^ -> esptool.py"
 	$(Q) $(WRAP_STUB) $(filter %.elf,$^)
 
