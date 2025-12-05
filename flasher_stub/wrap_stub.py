@@ -73,8 +73,10 @@ def write_python_snippet_to_file(stub_name, stub_data, out_file):
 
 def write_python_snippets(stub_dict, out_file):
     for name, stub_data in stub_dict.items():
-        m = re.match(r"stub_flasher_([a-z0-9_]+)", name)
-        key = m.group(1).upper()
+        m = re.match(r"stub_flasher_([a-z0-9_.-]+)", name)
+        # Normalize the matched name by stripping any non-alphanumeric
+        # characters so that names like "32p4.rc1" become "32p4rc1".
+        key = re.sub(r'[^a-z0-9]', '', m.group(1)).upper()
         write_python_snippet_to_file(key, stub_data, out_file)
 
 
@@ -96,13 +98,24 @@ def embed_python_snippets(stubs):
                 continue
 
             key = m.group(1)
-            stub_data = stubs.get("stub_flasher_%s" % key.lower(), None)
+            # Normalize key (remove non-alphanumeric chars) for lookup.
+            norm_key = re.sub(r'[^a-z0-9]', '', key.lower())
+
+            stub_data = None
+            for k, v in stubs.items():
+                if not k.startswith('stub_flasher_'):
+                    continue
+                suffix = k[len('stub_flasher_'):]
+                if re.sub(r'[^a-z0-9]', '', suffix.lower()) == norm_key:
+                    stub_data = v
+                    break
+
             if not stub_data:
                 f.write(line)
                 continue
 
             write_python_snippet_to_file(key, stub_data, f)
-            skip_until = r'""")))'
+            skip_until = r'"""))'
 
 
 def stub_name(filename):
