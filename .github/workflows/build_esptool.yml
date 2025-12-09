@@ -1,6 +1,12 @@
 name: Build esptool
 
-on: [push, pull_request]
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
+    paths-ignore:
+    - '.github/**' # Ignore changes towards the .github directory
 
 jobs:
   build-esptool-binaries:
@@ -8,10 +14,10 @@ jobs:
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        platform: [windows-amd64, linux-amd64, macos-amd64, macos-arm64, linux-armv7, linux-aarch64]
+        platform: [linux-amd64, macos-amd64, macos-arm64, linux-armv7, linux-aarch64]
         include:
-          - platform: windows-amd64
-            runner: windows-latest
+#          - platform: windows-amd64
+#            runner: windows-latest
           - platform: linux-amd64
             runner: ubuntu-latest
           - platform: macos-amd64
@@ -64,63 +70,80 @@ jobs:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-keyvault-uri: ${{ secrets.AZURE_KEYVAULT_URI }}
           azure-keyvault-cert-name: ${{ secrets.AZURE_KEYVAULT_CERT_NAME }}
-      - name: Add license and readme
-        shell: bash
-        run: mv LICENSE README.md ./${{ env.DISTPATH }}
-
       - name: Archive artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.DISTPATH }}
           path: ${{ env.DISTPATH }}
+      - name: Update esptool version when releasing
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          python ci/patch_release.py --version ${{ github.ref_name }} esptool/__init__.py
+      - name: Update package.json when a release tag is set
+        if: startsWith(github.ref, 'refs/tags/') && matrix.platform == 'linux-amd64'
+        run: |
+          rm -f package.json
+          python ci/gen_pio_manifest.py -o "./" -s ${{ github.ref_name }}
+      - name: Upload package.json artifact
+        if: startsWith(github.ref, 'refs/tags/') && matrix.platform == 'linux-amd64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifest
+          path: /home/runner/work/esptool/esptool/package.json
 
-  create_release:
-    name: Create GitHub release
-    if: startsWith(github.ref, 'refs/tags/') && !(contains(github.ref_name, 'dev'))
-    needs: [build-esptool-binaries]
+  push_stubs:
+    name: Commit changed package.json
+    needs: build-esptool-binaries
     runs-on: ubuntu-latest
-    env:
-      PIP_EXTRA_INDEX_URL: "https://dl.espressif.com/pypi"
-    permissions:
-      contents: write
     steps:
-      - name: Get version
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-        shell: bash
-      - name: Checkout
-        uses: actions/checkout@master
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-      - name: Install dependencies
-        run: |
-          pip install --user -e ".[dev]"
-      - name: Generate changelog
-        run: |
-          cz changelog ${{ steps.get_version.outputs.VERSION }} --template ci/gh_changelog_template.md.j2 --file-name changelog_body.md
-          cat changelog_body.md
-      - name: Download built binaries
-        uses: actions/download-artifact@master
-      - name: Compress and rename binaries
-        run: |
-          for dir in esptool-*; do
-            if [[ "$dir" == esptool-win* ]]; then
-              zip -r "esptool-v${{ steps.get_version.outputs.VERSION }}-${dir#esptool-}.zip" "$dir"
-            else
-              chmod -R u=rwx,g=rx,o=rx "$dir"
-              tar -cvzf "esptool-v${{ steps.get_version.outputs.VERSION }}-${dir#esptool-}.tar.gz" "$dir"
-            fi
-          done
-      - name: Create release
-        id: create_release
-        uses: softprops/action-gh-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ref: master_oem
+        if: startsWith(github.ref, 'refs/tags/')
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          body_path: changelog_body.md
-          name: Version ${{ steps.get_version.outputs.VERSION }}
-          draft: true
-          prerelease: false
-          files: |
-            esptool-v${{ steps.get_version.outputs.VERSION }}-*.zip
-            esptool-v${{ steps.get_version.outputs.VERSION }}-*.tar.gz
+          name: |
+            manifest
+          path: |
+           ./
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          commit_message: update manifest
+
+  release:
+      name: Upload release binaries
+      needs: [push_stubs]
+      if: startsWith(github.ref, 'refs/tags/')
+      runs-on: ubuntu-latest
+      steps:
+        - name: Checkout repository
+          uses: actions/checkout@v4
+        - name: Zip esptool.py
+          run: |
+            echo "Packaging new esptool release: ${{ github.ref_name }}"
+            python ci/patch_release.py --version ${{ github.ref_name }} esptool/__init__.py
+            rm package.json
+            python ci/gen_pio_manifest.py -o "./" -s ${{ github.ref_name }}
+            python ci/pack_python.py
+        - name: Download built binaries
+          uses: actions/download-artifact@v4
+        - name: Rename and package binaries
+          run: |
+            zip -r esptool-linux-armv7.zip ./esptool-linux-armv7
+            zip -r esptool-linux-aarch64.zip ./esptool-linux-aarch64
+            zip -r esptool-macos-arm64.zip ./esptool-macos-arm64
+            zip -r esptool-macos-amd64.zip ./esptool-macos-amd64
+            zip -r esptool-linux-amd64.zip ./esptool-linux-amd64
+#            zip -r esptool-windows-amd64.zip ./esptool-windows-amd64
+        - name: Release
+          uses: jason2866/action-gh-release@v1.3
+          with:
+            prerelease: false
+            files: |
+              *.zip
+          env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
