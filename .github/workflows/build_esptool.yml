@@ -14,10 +14,10 @@ jobs:
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        platform: [linux-amd64, macos-amd64, macos-arm64, linux-armv7, linux-aarch64]
+        platform: [windows-amd64, linux-amd64, macos-amd64, macos-arm64, linux-armv7, linux-aarch64]
         include:
-#          - platform: windows-amd64
-#            runner: windows-latest
+          - platform: windows-amd64
+            runner: windows-latest
           - platform: linux-amd64
             runner: ubuntu-latest
           - platform: macos-amd64
@@ -65,11 +65,7 @@ jobs:
           icon-file: ${{ matrix.platform == 'windows-amd64' && 'ci/espressif.ico' || '' }}
           target-platform: ${{ matrix.platform }}
           additional-arm-packages: 'openssl libffi-dev libssl-dev libffi7'
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          azure-keyvault-uri: ${{ secrets.AZURE_KEYVAULT_URI }}
-          azure-keyvault-cert-name: ${{ secrets.AZURE_KEYVAULT_CERT_NAME }}
+
       - name: Archive artifact
         uses: actions/upload-artifact@v4
         with:
@@ -138,7 +134,7 @@ jobs:
             zip -r esptool-macos-arm64.zip ./esptool-macos-arm64
             zip -r esptool-macos-amd64.zip ./esptool-macos-amd64
             zip -r esptool-linux-amd64.zip ./esptool-linux-amd64
-#            zip -r esptool-windows-amd64.zip ./esptool-windows-amd64
+            zip -r esptool-windows-amd64.zip ./esptool-windows-amd64
         - name: Release
           uses: jason2866/action-gh-release@v1.3
           with:
