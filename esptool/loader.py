@@ -343,6 +343,7 @@ class ESPLoader:
             "uart_no": None,
             "usb_pid": None,
             "security_info": None,
+            "is_cdc_device": None,
         }
 
         if isinstance(port, str):
@@ -390,7 +391,7 @@ class ESPLoader:
                 )
         else:
             self._port = port
-        self._slip_reader = slip_reader(self._port, self.trace)
+        self._slip_reader = slip_reader(self._port, self.trace, self)
         # setting baud rate in a separate step is a workaround for
         # CH341 driver on some Linux versions (this opens at 9600 then
         # sets), shouldn't matter for other platforms/drivers. See
@@ -590,7 +591,7 @@ class ESPLoader:
 
     def flush_input(self):
         self._port.flushInput()
-        self._slip_reader = slip_reader(self._port, self.trace)
+        self._slip_reader = slip_reader(self._port, self.trace, self)
 
     def sync(self):
         val, _ = self.command(
@@ -645,6 +646,48 @@ class ESPLoader:
             f"\nFailed to get PID of a device on {active_port}, "
             "using standard reset sequence."
         )
+
+    def _is_cdc_device(self):
+        """
+        Detect if the device is a CDC device (Native USB) for burst read optimization.
+        CDC devices: Espressif Native USB (VID: 0x303a) or CH343 (VID: 0x1a86, PID: 0x55d3)
+        """
+        if self.cache["is_cdc_device"] is not None:
+            return self.cache["is_cdc_device"]
+
+        if list_ports is None:
+            return False
+
+        active_port = self._port.port
+
+        # Pyserial only identifies regular ports, URL handlers are not supported
+        if not active_port.lower().startswith(("com", "/dev/")):
+            return False
+
+        # Return the real path if the active port is a symlink
+        if active_port.startswith("/dev/") and os.path.islink(active_port):
+            active_port = os.path.realpath(active_port)
+
+        active_ports = [active_port]
+
+        # The "cu" (call-up) device has to be used for outgoing communication on MacOS
+        if sys.platform == "darwin" and "tty" in active_port:
+            active_ports.append(active_port.replace("tty", "cu"))
+
+        ports = list_ports.comports()
+        for p in ports:
+            if p.device in active_ports:
+                # Espressif Native USB (VID: 0x303a)
+                if p.vid == 0x303A:
+                    self.cache["is_cdc_device"] = True
+                    return True
+                # CH343 (VID: 0x1a86, PID: 0x55d3)
+                if p.vid == 0x1A86 and p.pid == 0x55D3:
+                    self.cache["is_cdc_device"] = True
+                    return True
+
+        self.cache["is_cdc_device"] = False
+        return False
 
     def _connect_attempt(self, reset_strategy, mode="default-reset"):
         """A single connection attempt"""
@@ -1826,13 +1869,22 @@ class StubMixin:
         return f"{chip_name}.json"
 
 
-def slip_reader(port, trace_function):
+def slip_reader(port, trace_function, esp_loader=None):
     """Generator to read SLIP packets from a serial port.
     Yields one full SLIP packet at a time, raises exception on timeout or invalid data.
+
+    Two implementations:
+    - Burst: CDC devices (Native USB) and CH343 - very fast processing
+    - Standard: Other USB-Serial adapters - stable fast processing
 
     Designed to avoid too many calls to serial.read(1), which can bog
     down on slow systems.
     """
+
+    # Determine if we should use burst mode
+    use_burst_mode = False
+    if esp_loader is not None:
+        use_burst_mode = esp_loader._is_cdc_device()
 
     def detect_panic_handler(input):
         """
@@ -1866,65 +1918,149 @@ def slip_reader(port, trace_function):
     partial_packet = None
     in_escape = False
     successful_slip = False
-    while True:
-        waiting = port.inWaiting()
-        read_bytes = port.read(1 if waiting == 0 else waiting)
-        if read_bytes == b"":
-            if partial_packet is None:  # fail due to no data
-                msg = (
-                    "Serial data stream stopped: Possible serial noise or corruption."
-                    if successful_slip
-                    else "No serial data received."
-                )
-            else:  # fail during packet transfer
-                msg = "Packet content transfer stopped "
-                f"(received {len(partial_packet)} bytes)."
-            trace_function(msg)
-            raise FatalError(msg)
-        trace_function(
-            f"{f'Read {len(read_bytes)} bytes:':<21} {HexFormatter(read_bytes)}"
-        )
-        for b in read_bytes:
-            b = bytes([b])
-            if partial_packet is None:  # waiting for packet header
-                if b == b"\xc0":
-                    partial_packet = b""
-                else:
-                    trace_function(f"Read invalid data: {HexFormatter(read_bytes)}")
-                    remaining_data = port.read(port.inWaiting())
-                    trace_function(
-                        "Remaining data in serial buffer: "
-                        f"{HexFormatter(remaining_data)}",
+
+    if use_burst_mode:
+        # Burst mode: Process all available bytes in one pass for ultra-high-speed transfers
+        # Used for: CDC devices (all platforms) and CH343
+        while True:
+            waiting = port.inWaiting()
+            if waiting == 0:
+                # Small delay to allow data to accumulate
+                time.sleep(0.001)
+                waiting = port.inWaiting()
+
+            if waiting == 0:
+                # No data available, read one byte with timeout
+                read_bytes = port.read(1)
+            else:
+                # Read all available bytes at once
+                read_bytes = port.read(waiting)
+
+            if read_bytes == b"":
+                if partial_packet is None:  # fail due to no data
+                    msg = (
+                        "Serial data stream stopped: Possible serial noise or corruption."
+                        if successful_slip
+                        else "No serial data received."
                     )
-                    detect_panic_handler(read_bytes + remaining_data)
-                    raise FatalError(
-                        f"Invalid head of packet (0x{hexify(b)}): "
-                        "Possible serial noise or corruption."
+                else:  # fail during packet transfer
+                    msg = (
+                        "Packet content transfer stopped "
+                        f"(received {len(partial_packet)} bytes)."
                     )
-            elif in_escape:  # part-way through escape sequence
-                in_escape = False
-                if b == b"\xdc":
-                    partial_packet += b"\xc0"
-                elif b == b"\xdd":
-                    partial_packet += b"\xdb"
-                else:
-                    trace_function(f"Read invalid data: {HexFormatter(read_bytes)}")
-                    remaining_data = port.read(port.inWaiting())
-                    trace_function(
-                        "Remaining data in serial buffer: "
-                        f"{HexFormatter(remaining_data)}"
+                trace_function(msg)
+                raise FatalError(msg)
+
+            trace_function(
+                f"{f'Read {len(read_bytes)} bytes:':<21} {HexFormatter(read_bytes)}"
+            )
+
+            # Process all bytes in the buffer without returning to outer loop
+            # This is critical for handling high-speed burst transfers
+            for b in read_bytes:
+                b = bytes([b])
+                if partial_packet is None:  # waiting for packet header
+                    if b == b"\xc0":
+                        partial_packet = b""
+                    else:
+                        trace_function(f"Read invalid data: {HexFormatter(read_bytes)}")
+                        remaining_data = port.read(port.inWaiting())
+                        trace_function(
+                            "Remaining data in serial buffer: "
+                            f"{HexFormatter(remaining_data)}",
+                        )
+                        detect_panic_handler(read_bytes + remaining_data)
+                        raise FatalError(
+                            f"Invalid head of packet (0x{hexify(b)}): "
+                            "Possible serial noise or corruption."
+                        )
+                elif in_escape:  # part-way through escape sequence
+                    in_escape = False
+                    if b == b"\xdc":
+                        partial_packet += b"\xc0"
+                    elif b == b"\xdd":
+                        partial_packet += b"\xdb"
+                    else:
+                        trace_function(f"Read invalid data: {HexFormatter(read_bytes)}")
+                        remaining_data = port.read(port.inWaiting())
+                        trace_function(
+                            "Remaining data in serial buffer: "
+                            f"{HexFormatter(remaining_data)}"
+                        )
+                        detect_panic_handler(read_bytes + remaining_data)
+                        raise FatalError(f"Invalid SLIP escape (0xdb, 0x{hexify(b)}).")
+                elif b == b"\xdb":  # start of escape sequence
+                    in_escape = True
+                elif b == b"\xc0":  # end of packet
+                    trace_function(f"Received full packet: {HexFormatter(partial_packet)}")
+                    yield partial_packet
+                    partial_packet = None
+                    successful_slip = True
+                else:  # normal byte in packet
+                    partial_packet += b
+    else:
+        # Standard mode: Stable for non-CDC USB-Serial adapters (CH340, CP2102, etc.)
+        while True:
+            waiting = port.inWaiting()
+            read_bytes = port.read(1 if waiting == 0 else waiting)
+            if read_bytes == b"":
+                if partial_packet is None:  # fail due to no data
+                    msg = (
+                        "Serial data stream stopped: Possible serial noise or corruption."
+                        if successful_slip
+                        else "No serial data received."
                     )
-                    detect_panic_handler(read_bytes + remaining_data)
-                    raise FatalError(f"Invalid SLIP escape (0xdb, 0x{hexify(b)}).")
-            elif b == b"\xdb":  # start of escape sequence
-                in_escape = True
-            elif b == b"\xc0":  # end of packet
-                trace_function(f"Received full packet: {HexFormatter(partial_packet)}")
-                yield partial_packet
-                partial_packet = None
-                successful_slip = True
-            else:  # normal byte in packet
-                partial_packet += b
+                else:  # fail during packet transfer
+                    msg = (
+                        "Packet content transfer stopped "
+                        f"(received {len(partial_packet)} bytes)."
+                    )
+                trace_function(msg)
+                raise FatalError(msg)
+            trace_function(
+                f"{f'Read {len(read_bytes)} bytes:':<21} {HexFormatter(read_bytes)}"
+            )
+            for b in read_bytes:
+                b = bytes([b])
+                if partial_packet is None:  # waiting for packet header
+                    if b == b"\xc0":
+                        partial_packet = b""
+                    else:
+                        trace_function(f"Read invalid data: {HexFormatter(read_bytes)}")
+                        remaining_data = port.read(port.inWaiting())
+                        trace_function(
+                            "Remaining data in serial buffer: "
+                            f"{HexFormatter(remaining_data)}",
+                        )
+                        detect_panic_handler(read_bytes + remaining_data)
+                        raise FatalError(
+                            f"Invalid head of packet (0x{hexify(b)}): "
+                            "Possible serial noise or corruption."
+                        )
+                elif in_escape:  # part-way through escape sequence
+                    in_escape = False
+                    if b == b"\xdc":
+                        partial_packet += b"\xc0"
+                    elif b == b"\xdd":
+                        partial_packet += b"\xdb"
+                    else:
+                        trace_function(f"Read invalid data: {HexFormatter(read_bytes)}")
+                        remaining_data = port.read(port.inWaiting())
+                        trace_function(
+                            "Remaining data in serial buffer: "
+                            f"{HexFormatter(remaining_data)}"
+                        )
+                        detect_panic_handler(read_bytes + remaining_data)
+                        raise FatalError(f"Invalid SLIP escape (0xdb, 0x{hexify(b)}).")
+                elif b == b"\xdb":  # start of escape sequence
+                    in_escape = True
+                elif b == b"\xc0":  # end of packet
+                    trace_function(f"Received full packet: {HexFormatter(partial_packet)}")
+                    yield partial_packet
+                    partial_packet = None
+                    successful_slip = True
+                else:  # normal byte in packet
+                    partial_packet += b
 
 
 class HexFormatter:
