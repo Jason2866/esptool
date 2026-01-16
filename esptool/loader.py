@@ -343,7 +343,6 @@ class ESPLoader:
             "uart_no": None,
             "usb_pid": None,
             "security_info": None,
-            "is_cdc_device": None,
         }
 
         if isinstance(port, str):
@@ -646,48 +645,6 @@ class ESPLoader:
             f"\nFailed to get PID of a device on {active_port}, "
             "using standard reset sequence."
         )
-
-    def _is_cdc_device(self):
-        """
-        Detect if the device is a CDC device (Native USB) for burst read optimization.
-        CDC devices: Espressif Native USB (VID: 0x303a) or CH343 (VID: 0x1a86, PID: 0x55d3)
-        """
-        if self.cache["is_cdc_device"] is not None:
-            return self.cache["is_cdc_device"]
-
-        if list_ports is None:
-            return False
-
-        active_port = self._port.port
-
-        # Pyserial only identifies regular ports, URL handlers are not supported
-        if not active_port.lower().startswith(("com", "/dev/")):
-            return False
-
-        # Return the real path if the active port is a symlink
-        if active_port.startswith("/dev/") and os.path.islink(active_port):
-            active_port = os.path.realpath(active_port)
-
-        active_ports = [active_port]
-
-        # The "cu" (call-up) device has to be used for outgoing communication on MacOS
-        if sys.platform == "darwin" and "tty" in active_port:
-            active_ports.append(active_port.replace("tty", "cu"))
-
-        ports = list_ports.comports()
-        for p in ports:
-            if p.device in active_ports:
-                # Espressif Native USB (VID: 0x303a)
-                if p.vid == 0x303A:
-                    self.cache["is_cdc_device"] = True
-                    return True
-                # CH343 (VID: 0x1a86, PID: 0x55d3)
-                if p.vid == 0x1A86 and p.pid == 0x55D3:
-                    self.cache["is_cdc_device"] = True
-                    return True
-
-        self.cache["is_cdc_device"] = False
-        return False
 
     def _connect_attempt(self, reset_strategy, mode="default-reset"):
         """A single connection attempt"""
@@ -1874,17 +1831,24 @@ def slip_reader(port, trace_function, esp_loader=None):
     Yields one full SLIP packet at a time, raises exception on timeout or invalid data.
 
     Two implementations:
-    - Burst: CDC devices (Native USB) and CH343 - very fast processing
-    - Standard: Other USB-Serial adapters - stable fast processing
+    - Burst: CDC devices (Native USB) - very fast processing
+    - Standard: Other USB-Serial adapters - stable processing
 
     Designed to avoid too many calls to serial.read(1), which can bog
     down on slow systems.
     """
 
-    # Determine if we should use burst mode
+    # Determine if we should use burst mode for CDC devices (Native USB)
+    # We detect this by checking the USB PID - USB_JTAG_SERIAL_PID indicates native USB
     use_burst_mode = False
     if esp_loader is not None:
-        use_burst_mode = esp_loader._is_cdc_device()
+        # Use burst mode if the device is using USB-JTAG/Serial (native USB)
+        pid = esp_loader._get_pid()
+        use_burst_mode = pid == esp_loader.USB_JTAG_SERIAL_PID if pid else False
+        print(
+            f"SLIP reader using {'burst' if use_burst_mode else 'standard'} mode "
+            f"based on USB PID 0x{pid:04X}" if pid else "unknown USB PID"
+        )
 
     def detect_panic_handler(input):
         """
@@ -1921,7 +1885,7 @@ def slip_reader(port, trace_function, esp_loader=None):
 
     if use_burst_mode:
         # Burst mode: Process all available bytes in one pass for ultra-high-speed transfers
-        # Used for: CDC devices (all platforms) and CH343
+        # Used for: CDC devices (all platforms)
         while True:
             waiting = port.inWaiting()
             if waiting == 0:
