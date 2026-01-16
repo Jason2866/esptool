@@ -1845,10 +1845,6 @@ def slip_reader(port, trace_function, esp_loader=None):
         # Use burst mode if the device is using USB-JTAG/Serial (native USB)
         pid = esp_loader._get_pid()
         use_burst_mode = pid == esp_loader.USB_JTAG_SERIAL_PID if pid else False
-        print(
-            f"SLIP reader using {'burst' if use_burst_mode else 'standard'} mode "
-            f"based on USB PID 0x{pid:04X}" if pid else "unknown USB PID"
-        )
 
     def detect_panic_handler(input):
         """
