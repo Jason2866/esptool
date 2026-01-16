@@ -545,12 +545,14 @@ def write_flash(
         compress = esp.IS_STUB
 
     if not force and esp.CHIP_NAME != "ESP8266" and not esp.secure_download_mode:
-        # Check if secure boot is active
-        if esp.get_secure_boot_enabled():
+        # Check if Secure Boot V1 is active (ESP32 only)
+        # V1 stores the signing key in chip eFuse - bootloader reflash is dangerous
+        # V2 uses external signing key - bootloader updates are safe
+        if esp.get_secure_boot_v1_enabled():
             for address, _ in norm_addr_data:
                 if address < 0x8000:
                     raise FatalError(
-                        "Secure Boot detected, writing to flash regions < 0x8000 "
+                        "Secure Boot V1 detected, writing to flash regions < 0x8000 "
                         "is disabled to protect the bootloader. "
                         "Use the force argument to override, "
                         "please use with caution, otherwise it may brick your device!"
@@ -1035,6 +1037,9 @@ def attach_flash(
         spi_config_txt = f"CLK:{clk}, Q:{q}, D:{d}, HD:{hd}, CS:{cs}"
         value = (hd << 24) | (cs << 18) | (d << 12) | (q << 6) | clk
         return spi_config_txt, value
+
+    if not esp.secure_download_mode:
+        esp.power_on_flash()
 
     # Override the common SPI flash parameter stuff if configured to do so
     if spi_connection is not None:

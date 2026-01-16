@@ -67,6 +67,7 @@ except TypeError:
     pass  # __doc__ returns None for pySerial
 
 try:
+    from serial.tools.list_ports_common import ListPortInfo  # noqa: F401
     import serial.tools.list_ports as list_ports
 except ImportError:
     log.error(
@@ -1208,6 +1209,13 @@ class ESPLoader:
     def get_secure_boot_enabled(self):
         return False
 
+    def get_secure_boot_v1_enabled(self):
+        """
+        Returns True if Secure Boot V1 is enabled.
+        Only ESP32 supports V1; other chips return False.
+        """
+        return False
+
     def get_flash_encryption_enabled(self):
         return False
 
@@ -1231,6 +1239,9 @@ class ESPLoader:
 
     def is_flash_encryption_key_valid(self):
         raise NotSupportedError(self, "Flash encryption")
+
+    def power_on_flash(self):
+        pass  # The flash chip needs to be powered on only in special cases
 
     @classmethod
     def parse_flash_size_arg(cls, arg):

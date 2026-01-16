@@ -34,7 +34,7 @@ class TestPortSorting:
 
         with (
             patch("sys.platform", "linux"),
-            patch("esptool.list_ports") as mock_list_ports,
+            patch("esptool.cli_util.list_ports") as mock_list_ports,
         ):
             mock_list_ports.comports.return_value = mock_ports
 
@@ -71,7 +71,7 @@ class TestPortSorting:
 
         with (
             patch("sys.platform", "darwin"),
-            patch("esptool.list_ports") as mock_list_ports,
+            patch("esptool.cli_util.list_ports") as mock_list_ports,
         ):
             mock_list_ports.comports.return_value = mock_ports
 
@@ -103,7 +103,7 @@ class TestPortSorting:
 
         with (
             patch("sys.platform", "win32"),
-            patch("esptool.list_ports") as mock_list_ports,
+            patch("esptool.cli_util.list_ports") as mock_list_ports,
         ):
             mock_list_ports.comports.return_value = mock_ports
 
@@ -150,7 +150,7 @@ class TestPortSorting:
 
         with (
             patch("sys.platform", "linux"),
-            patch("esptool.list_ports") as mock_list_ports,
+            patch("esptool.cli_util.list_ports") as mock_list_ports,
         ):
             mock_list_ports.comports.return_value = mock_ports
 
