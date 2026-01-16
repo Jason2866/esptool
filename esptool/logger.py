@@ -230,15 +230,10 @@ class EsptoolLogger(TemplateLogger):
         Call in a loop to print a progress bar overwriting itself in place.
         If terminal doesn't support ANSI escape codes, no overwriting happens.
         """
-        filled = int(bar_length * cur_iter // total_iters)
-        if filled == bar_length:
-            bar = "=" * bar_length
-        elif filled == 0:
-            bar = " " * bar_length
-        else:
-            bar = f"{'=' * (filled - 1)}>{' ' * (bar_length - filled)}"
-
         percent = f"{100 * (cur_iter / float(total_iters)):.1f}"
+        filled_length = int(bar_length * cur_iter // total_iters)
+        bar = "█" * filled_length + "░" * (bar_length - filled_length)
+
         self.print(
             f"\r{self.ansi_clear}{prefix}[{bar}] {percent:>5}%{suffix} ",
             end="\n" if not self._smart_features or cur_iter == total_iters else "",

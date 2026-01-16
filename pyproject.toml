@@ -78,7 +78,7 @@
 
 [tool.commitizen]
     name = "czespressif"
-    version = "5.1.0"
+    version = "5.1.2"
     update_changelog_on_bump = true
     tag_format = "v$version"
     changelog_start_rev = "v4.2.1"
@@ -111,6 +111,9 @@
         ".git",
         "__pycache__"
     ]
+
+    # ignore release helper
+    extend-exclude = ["ci/pack_python.py", "ci/patch_release.py", "ci/gen_pio_manifest.py", "package.json"]
 
     line-length = 88
     target-version = "py310"
