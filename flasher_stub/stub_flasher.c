@@ -48,10 +48,10 @@ static uint8_t calculate_checksum(uint8_t *buf, int length)
   return res;
 }
 
-#if ESP32C5 || ESP32P4RC1
+#if ESP32C5 || ESP32P4RC1 || ESP32P4
 /* Helper to call the correct OPIFLASH_EXEC_CMD offset in ROM based on the ECO version */
 #define OPIFLASH_EXEC_CMD_CALL(fn) \
-  fn(spi_num, mode, \
+  (fn)(spi_num, mode, \
       cmd, cmd_bit_len, \
       addr, addr_bit_len, \
       dummy_bits, \
@@ -70,20 +70,14 @@ void esp_rom_opiflash_exec_cmd(int spi_num, SpiFlashRdMode mode,
   bool is_write_erase_operation)
 {
 #if ESP32C5
-  if (_rom_eco_version == 3) {
-      OPIFLASH_EXEC_CMD_CALL(esp_rom_opiflash_exec_cmd_eco3);
-  } else {
-      OPIFLASH_EXEC_CMD_CALL(esp_rom_opiflash_exec_cmd_eco2);
-  }
+  OPIFLASH_EXEC_CMD_CALL(_rom_eco_version == 3 ? esp_rom_opiflash_exec_cmd_eco3 : esp_rom_opiflash_exec_cmd_eco2);
 #elif ESP32P4RC1
-  if (_rom_eco_version == 2) {
-      OPIFLASH_EXEC_CMD_CALL(esp_rom_opiflash_exec_cmd_eco2);
-  } else {
-      OPIFLASH_EXEC_CMD_CALL(esp_rom_opiflash_exec_cmd_eco1);
-  }
+  OPIFLASH_EXEC_CMD_CALL(_rom_eco_version == 2 ? esp_rom_opiflash_exec_cmd_eco2 : esp_rom_opiflash_exec_cmd_eco1);
+#elif ESP32P4
+  OPIFLASH_EXEC_CMD_CALL(_rom_eco_version == 5 ? esp_rom_opiflash_exec_cmd_eco5 : esp_rom_opiflash_exec_cmd_eco6);
 #endif
 }
-#endif // ESP32C5 || ESP32P4RC1
+#endif // ESP32C5 || ESP32P4RC1 || ESP32P4
 
 #if USE_MAX_CPU_FREQ
 static bool can_use_max_cpu_freq()
@@ -255,6 +249,7 @@ void cmd_loop() {
       SLIP_send_frame_data(ESP_BAD_DATA_LEN);
       SLIP_send_frame_data(0xEE);
       SLIP_send_frame_delimiter();
+      stub_tx_flush();
       continue;
     }
 
@@ -474,6 +469,7 @@ void cmd_loop() {
           break;
       }
     }
+    stub_tx_flush();
   }
 }
 
@@ -530,6 +526,7 @@ void stub_main()
 
   /* Send the OHAI greeting, stub will be reported as running. */
   SLIP_send(&greeting, 4);
+  stub_tx_flush();
 
   /* Configure the interrupts for receiving data from esptool on the host. */
   ub.reading_buf = ub.buf_a;
