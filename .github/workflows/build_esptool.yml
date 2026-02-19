@@ -65,6 +65,7 @@ jobs:
           icon-file: ${{ matrix.platform == 'windows-amd64' && 'ci/espressif.ico' || '' }}
           target-platform: ${{ matrix.platform }}
           additional-arm-packages: 'openssl libffi-dev libssl-dev libffi7'
+          additional-args: "--collect-submodules=rich._unicode_data"
 
       - name: Archive artifact
         uses: actions/upload-artifact@v4
