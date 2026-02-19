@@ -119,6 +119,7 @@ host_tests_espefuse:
         - esp32s3
         - esp32h21
         - esp32h4
+        - esp32e22
   script:
     - coverage run --parallel-mode -m pytest ${CI_PROJECT_DIR}/test/test_espefuse.py --chip ${TARGET}
     # some .coverage files in sub-directories are not collected on some runners, move them first
@@ -126,7 +127,7 @@ host_tests_espefuse:
 
 host_tests_latest_python:
   <<: *host_tests_template
-  image: python:3.13-bullseye
+  image: python:3.14-trixie
   variables:
     PYTEST_ADDOPTS: "-sv --junitxml=test/report.xml --color=yes"
   script:
@@ -160,7 +161,7 @@ host_tests_hsm:
 
 run_pre_commit_hooks:
   stage: test
-  image: python:3.10-bullseye
+  image: python:3.14-trixie
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
   tags:
@@ -457,6 +458,14 @@ target_esp32c61:
   script:
     - coverage run --parallel-mode -m pytest ${CI_PROJECT_DIR}/test/test_esptool.py --port /dev/serial_ports/ESP32C61 --chip esp32c61 --baud 115200
 
+# ESP32H4
+target_esp32h4:
+  extends: .target_esptool_test
+  tags:
+    - esptool_esp32h4_target
+  script:
+    - coverage run --parallel-mode -m pytest ${CI_PROJECT_DIR}/test/test_esptool.py --port /dev/serial_ports/ESP32H4 --chip esp32h4 --baud 115200
+
 .windows_test:
   stage: test
   variables:
@@ -528,7 +537,7 @@ combine_reports:
 
 build_docs:
   stage: build_docs
-  image: python:3.13-bookworm
+  image: python:3.14-trixie
   tags:
     - build_docs
   rules:
@@ -552,7 +561,7 @@ build_docs:
 
 .deploy_docs_template:
   stage: deploy_docs
-  image: python:3.13-bookworm
+  image: python:3.14-trixie
   tags:
     - deploy
   needs:

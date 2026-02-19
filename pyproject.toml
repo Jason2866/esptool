@@ -26,6 +26,7 @@
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
         "Programming Language :: Python :: 3.13",
+        "Programming Language :: Python :: 3.14",
     ]
     requires-python = ">=3.10"
     dynamic = ["version", "scripts"]
@@ -78,7 +79,7 @@
 
 [tool.commitizen]
     name = "czespressif"
-    version = "5.1.0"
+    version = "5.2.0"
     update_changelog_on_bump = true
     tag_format = "v$version"
     changelog_start_rev = "v4.2.1"

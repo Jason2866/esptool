@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025 Fredrik Ahlberg, Angus Gratton,
+# SPDX-FileCopyrightText: 2025-2026 Fredrik Ahlberg, Angus Gratton,
 # Espressif Systems (Shanghai) CO LTD, other contributors as noted.
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
@@ -8,6 +8,7 @@ import struct
 from .esp32c5 import ESP32C5ROM
 from ..loader import ESPLoader, StubMixin
 from ..util import FatalError, NotImplementedInROMError
+from ..logger import log
 
 
 class ESP32S31ROM(ESP32C5ROM):
@@ -20,8 +21,6 @@ class ESP32S31ROM(ESP32C5ROM):
     DROM_MAP_END = 0x54000000
 
     BOOTLOADER_FLASH_OFFSET = 0x2000  # First 2 sectors are reserved for FE purposes
-
-    CHIP_DETECT_MAGIC_VALUE = [0x0, 0x0ADDBAD0]
 
     UART_DATE_REG_ADDR = 0x2038A000 + 0x8C
 
@@ -67,8 +66,6 @@ class ESP32S31ROM(ESP32C5ROM):
     PURPOSE_VAL_XTS_AES256_KEY_2 = 3
     PURPOSE_VAL_XTS_AES128_KEY = 4
 
-    SUPPORTS_ENCRYPTED_FLASH = True
-
     FLASH_ENCRYPTED_WRITE_ALIGN = 16
 
     MEMORY_MAP = [
@@ -83,6 +80,8 @@ class ESP32S31ROM(ESP32C5ROM):
         [0x2E000000, 0x2E008000, "RTC_IRAM"],
         [0x2E000000, 0x2E008000, "RTC_DRAM"],
     ]
+
+    UF2_FAMILY_ID = 0x3101F7C1
 
     EFUSE_MAX_KEY = 5
     KEY_PURPOSES: dict[int, str] = {
@@ -131,7 +130,7 @@ class ESP32S31ROM(ESP32C5ROM):
         ]
 
     def get_crystal_freq(self):
-        # ESP32S31 XTAL is fixed to 40MHz
+        # ESP32-S31 XTAL is fixed to 40MHz
         return 40
 
     def get_flash_voltage(self):
@@ -202,8 +201,8 @@ class ESP32S31ROM(ESP32C5ROM):
         if not set(spi_connection).issubset(set(range(0, 61))):
             raise FatalError("SPI Pin numbers must be in the range 0-60.")
         if any([v for v in spi_connection if v in [33, 34]]):
-            print(
-                "WARNING: GPIO pins 33 and 34 are used by USB-Serial/JTAG, "
+            log.warning(
+                "GPIO pins 33 and 34 are used by USB-Serial/JTAG, "
                 "consider using other pins for SPI flash connection."
             )
 
