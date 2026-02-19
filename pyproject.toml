@@ -113,6 +113,9 @@
         "__pycache__"
     ]
 
+    # ignore release helper
+    extend-exclude = ["ci/pack_python.py", "ci/patch_release.py", "ci/gen_pio_manifest.py", "package.json"]
+
     line-length = 88
     target-version = "py310"
 
