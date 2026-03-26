@@ -128,8 +128,8 @@ class TestLogger:
                 bar_length=10,
             )
             output = fake_out.getvalue()
-            assert "Progress: [====>     ]  50.0% (2/4)" in output
-            assert "Progress: [==========] 100.0% (4/4) \n" in output
+            assert "Progress: [█████░░░░░]  50.0% (2/4)" in output
+            assert "Progress: [██████████] 100.0% (4/4) \n" in output
 
     def test_set_incomplete_logger(self, logger):
         with pytest.raises(
