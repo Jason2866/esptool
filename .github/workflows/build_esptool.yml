@@ -64,6 +64,8 @@ jobs:
             }
           icon-file: ${{ matrix.platform == 'windows-amd64' && 'ci/espressif.ico' || '' }}
           target-platform: ${{ matrix.platform }}
+          # bitstring 4.4+ loads implementation modules dynamically; bundle the whole package (see bitstring#362).
+          additional-args: "--collect-submodules=rich._unicode_data --collect-submodules=bitstring"
 
       - name: Archive artifact
         uses: actions/upload-artifact@v4
