@@ -4,7 +4,6 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-import binascii
 import struct
 import sys
 import time
@@ -18,7 +17,7 @@ import reedsolo
 
 from .mem_definition import EfuseDefineBlocks, EfuseDefineFields, EfuseDefineRegisters
 from .. import base_fields
-from .. import util
+from ..mem_definition_base import Field
 
 
 class EfuseBlock(base_fields.EfuseBlockBase):
@@ -90,45 +89,24 @@ class EspEfuses(base_fields.EspEfusesBase):
         ]
         if not skip_connect:
             self.get_coding_scheme_warnings()
-        self.efuses = [EfuseField.convert(self, efuse) for efuse in self.Fields.EFUSES]
-        self.efuses += [
-            EfuseField.convert(self, efuse) for efuse in self.Fields.KEYBLOCKS
-        ]
+        self.efuses = self._convert_efuse_defs(self.Fields.EFUSES)
+        self.efuses += self._convert_efuse_defs(self.Fields.KEYBLOCKS)
         if skip_connect:
-            self.efuses += [
-                EfuseField.convert(self, efuse)
-                for efuse in self.Fields.BLOCK2_CALIBRATION_EFUSES
-            ]
+            self.efuses += self._convert_efuse_defs(
+                self.Fields.BLOCK2_CALIBRATION_EFUSES
+            )
         else:
             if self.get_block_version() >= 1:
-                self.efuses += [
-                    EfuseField.convert(self, efuse)
-                    for efuse in self.Fields.BLOCK2_CALIBRATION_EFUSES
-                ]
-            self.efuses += [
-                EfuseField.convert(self, efuse) for efuse in self.Fields.CALC
-            ]
+                self.efuses += self._convert_efuse_defs(
+                    self.Fields.BLOCK2_CALIBRATION_EFUSES
+                )
+            self.efuses += self._convert_efuse_defs(self.Fields.CALC)
 
-    def __getitem__(self, efuse_name):
-        """Return the efuse field with the given name"""
-        for e in self.efuses:
-            if efuse_name == e.name or any(x == efuse_name for x in e.alt_names):
-                return e
-        new_fields = False
-        for efuse in self.Fields.BLOCK2_CALIBRATION_EFUSES:
-            if efuse.name == efuse_name or any(
-                x == efuse_name for x in efuse.alt_names
-            ):
-                self.efuses += [
-                    EfuseField.convert(self, efuse)
-                    for efuse in self.Fields.BLOCK2_CALIBRATION_EFUSES
-                ]
-                new_fields = True
-        if new_fields:
-            for e in self.efuses:
-                if efuse_name == e.name or any(x == efuse_name for x in e.alt_names):
-                    return e
-        raise KeyError
+    def _convert_efuse_defs(self, efuse_defs):
+        return [EfuseField.convert(self, efuse) for efuse in efuse_defs]
+
+    def _get_lazy_efuse_groups(self):
+        return [self.Fields.BLOCK2_CALIBRATION_EFUSES]
 
     def read_coding_scheme(self):
         self.coding_scheme = self.REGS.CODING_SCHEME_RS
@@ -283,7 +261,7 @@ class EspEfuses(base_fields.EspEfusesBase):
 
 class EfuseField(base_fields.EfuseFieldBase):
     @staticmethod
-    def convert(parent, efuse):
+    def convert(parent: base_fields.EspEfusesBase, efuse: Field) -> "EfuseField":
         return {
             "mac": EfuseMacField,
             "keypurpose": EfuseKeyPurposeField,
@@ -292,6 +270,18 @@ class EfuseField(base_fields.EfuseFieldBase):
             "wafer": EfuseWafer,
             "recovery_bootloader": EfuseBtldrRecoveryField,
         }.get(efuse.class_type, EfuseField)(parent, efuse)
+
+
+class EfuseTempSensor(base_fields.EfuseTempSensor, EfuseField):
+    pass
+
+
+class EfuseAdcPointCalibration(base_fields.EfuseAdcPointCalibration, EfuseField):
+    pass
+
+
+class EfuseMacField(base_fields.EfuseMacFieldBase, EfuseField):
+    pass
 
 
 class EfuseBtldrRecoveryField(EfuseField):
@@ -334,7 +324,7 @@ class EfuseBtldrRecoveryField(EfuseField):
             )
 
 
-class EfuseWafer(EfuseField):
+class EfuseWafer(base_fields.EfuseWaferBase, EfuseField):
     def get(self, from_read=True):
         hi_bits = self.parent["WAFER_VERSION_MAJOR_HI"].get(from_read)
         assert self.parent["WAFER_VERSION_MAJOR_HI"].bit_len == 1
@@ -342,97 +332,11 @@ class EfuseWafer(EfuseField):
         assert self.parent["WAFER_VERSION_MAJOR_LO"].bit_len == 2
         return (hi_bits << 2) + lo_bits
 
-    def save(self, new_value):
-        raise esptool.FatalError(f"Burning {self.name} is not supported")
 
-
-class EfuseTempSensor(EfuseField):
-    def get(self, from_read=True):
-        value = self.get_bitstring(from_read)
-        sig = -1 if value[0] else 1
-        return sig * value[1:].uint * 0.1
-
-
-class EfuseAdcPointCalibration(EfuseField):
-    def get(self, from_read=True):
-        STEP_SIZE = 4
-        value = self.get_bitstring(from_read)
-        sig = -1 if value[0] else 1
-        return sig * value[1:].uint * STEP_SIZE
-
-
-class EfuseMacField(EfuseField):
-    def check_format(self, new_value_str):
-        if new_value_str is None:
-            raise esptool.FatalError(
-                "Required MAC Address in AA:CD:EF:01:02:03 format!"
-            )
-        num_bytes = 8 if self.name == "MAC_EUI64" else 6
-        if new_value_str.count(":") != num_bytes - 1:
-            raise esptool.FatalError(
-                f"MAC Address needs to be a {num_bytes}-byte hexadecimal format "
-                "separated by colons (:)!"
-            )
-        hexad = new_value_str.replace(":", "").split(" ", 1)[0]
-        hexad = hexad.split(" ", 1)[0] if self.is_field_calculated() else hexad
-        if len(hexad) != num_bytes * 2:
-            raise esptool.FatalError(
-                f"MAC Address needs to be a {num_bytes}-byte hexadecimal number "
-                f"({num_bytes * 2} hexadecimal characters)!"
-            )
-        # order of bytearray = b'\xaa\xcd\xef\x01\x02\x03',
-        bindata = binascii.unhexlify(hexad)
-
-        if not self.is_field_calculated():
-            # unicast address check according to
-            # https://tools.ietf.org/html/rfc7042#section-2.1
-            if esptool.util.byte(bindata, 0) & 0x01:
-                raise esptool.FatalError("Custom MAC must be a unicast MAC!")
-        return bindata
-
-    def check(self):
-        errs, fail = self.parent.get_block_errors(self.block)
-        if errs != 0 or fail:
-            output = f"Block{self.block} has ERRORS:{errs} FAIL:{fail}."
-        else:
-            output = "OK"
-        return "(" + output + ")"
-
-    def get(self, from_read=True):
-        if self.name == "CUSTOM_MAC":
-            mac = self.get_raw(from_read)[::-1]
-        elif self.name == "MAC":
-            mac = self.get_raw(from_read)
-        elif self.name == "MAC_EUI64":
-            mac = self.parent["MAC"].get_bitstring(from_read).copy()
-            mac_ext = self.parent["MAC_EXT"].get_bitstring(from_read)
-            mac.insert(mac_ext, 24)
-            mac = mac.bytes
-        else:
-            mac = self.get_raw(from_read)
-        return " ".join([util.hexify(mac, ":"), self.check()])
-
-    def save(self, new_value):
-        def print_field(e, new_value):
-            log.print(
-                f"    - '{e.name}' ({e.description}) {e.get_bitstring()} -> {new_value}"
-            )
-
-        if self.name == "CUSTOM_MAC":
-            bitarray_mac = self.convert_to_bitstring(new_value)
-            print_field(self, bitarray_mac)
-            super().save(new_value)
-        else:
-            # Writing the BLOCK1 (MAC_SPI_8M_0) default MAC is not possible,
-            # as it's written in the factory.
-            raise esptool.FatalError(f"Burning {self.name} is not supported.")
-
-
-# fmt: off
-class EfuseKeyPurposeField(EfuseField):
+class EfuseKeyPurposeField(base_fields.EfuseKeyPurposeFieldBase, EfuseField):
     key_purpose_len = 5  # bits for key purpose
-    KeyPurposeType = tuple[str, int, str | None, str | None, str]
-    KEY_PURPOSES: list[KeyPurposeType] = [
+    # fmt: off
+    KEY_PURPOSES = [
         ("USER",                         0,  None,       None,      "no_need_rd_protect"),   # User purposes (software-only use)
         ("ECDSA_KEY_P256",               1,  None,       "Reverse", "need_rd_protect"),      # ECDSA key P256
         ("ECDSA_KEY",                    1,  None,       "Reverse", "need_rd_protect"),      # ECDSA key
@@ -453,42 +357,7 @@ class EfuseKeyPurposeField(EfuseField):
         ("ECDSA_KEY_P384_H",             18, None,       "Reverse", "need_rd_protect"),      # ECDSA key P384 high
         ("ECDSA_KEY_P384",               -3, "VIRTUAL",  None,      "need_rd_protect"),      # Virtual purpose splits to ECDSA_KEY_P384_L and ECDSA_KEY_P384_H
     ]
-    CUSTOM_KEY_PURPOSES: list[KeyPurposeType] = []
-    for id in range(0, 1 << key_purpose_len):
-        if id not in [p[1] for p in KEY_PURPOSES]:
-            CUSTOM_KEY_PURPOSES.append((f"CUSTOM_{id}", id, None, None, "no_need_rd_protect"))
-            CUSTOM_KEY_PURPOSES.append((f"CUSTOM_DIGEST_{id}", id, "DIGEST", None, "no_need_rd_protect"))
-    CUSTOM_KEY_PURPOSES.append(("CUSTOM_MAX", (1 << key_purpose_len) - 1, None, None, "no_need_rd_protect"))
-    CUSTOM_KEY_PURPOSES.append(("CUSTOM_DIGEST_MAX", (1 << key_purpose_len) - 1, "DIGEST", None, "no_need_rd_protect"))
-    KEY_PURPOSES += CUSTOM_KEY_PURPOSES
-# fmt: on
-    KEY_PURPOSES_NAME = [name[0] for name in KEY_PURPOSES]
-    DIGEST_KEY_PURPOSES = [name[0] for name in KEY_PURPOSES if name[2] == "DIGEST"]
-
-    def check_format(self, new_value_str):
-        # str convert to int: "XTS_AES_128_KEY" - > str(4)
-        # if int: 4 -> str(4)
-        raw_val = new_value_str
-        for purpose_name in self.KEY_PURPOSES:
-            if purpose_name[0] == new_value_str:
-                raw_val = str(purpose_name[1])
-                break
-        if raw_val.isdigit():
-            if int(raw_val) not in [p[1] for p in self.KEY_PURPOSES if p[1] > 0]:
-                raise esptool.FatalError(f"'{raw_val}' can not be set (value out of range).")
-        else:
-            raise esptool.FatalError(f"'{raw_val}' unknown name.")
-        return raw_val
-
-    def need_reverse(self, new_key_purpose):
-        for key in self.KEY_PURPOSES:
-            if key[0] == new_key_purpose:
-                return key[3] == "Reverse"
-
-    def need_rd_protect(self, new_key_purpose):
-        for key in self.KEY_PURPOSES:
-            if key[0] == new_key_purpose:
-                return key[4] == "need_rd_protect"
+    # fmt: on
 
     def get(self, from_read=True):
         # Handle special case for KEY_PURPOSE_<digit>_H fields (e.g., KEY_PURPOSE_0_H ... KEY_PURPOSE_9_H)
@@ -496,8 +365,7 @@ class EfuseKeyPurposeField(EfuseField):
             return self.get_raw(from_read)
         else:
             if any(
-                efuse is not None
-                and getattr(efuse, "name", None) == "KEY_PURPOSE_0_H"
+                efuse is not None and getattr(efuse, "name", None) == "KEY_PURPOSE_0_H"
                 for efuse in self.parent
             ):  # check if the hi bit field for KEY_PURPOSE_.. exists
                 hi_bits = self.parent[f"{self.name}_H"].get_raw(from_read)
@@ -512,17 +380,12 @@ class EfuseKeyPurposeField(EfuseField):
                     return p[0]
         return "FORBIDDEN_STATE"
 
-    def get_name(self, raw_val):
-        for key in self.KEY_PURPOSES:
-            if key[1] == raw_val:
-                return key[0]
-
     def save(self, new_value):
         raw_val = int(self.check_format(str(new_value)))
         # Check if _H field exists (5-bit key purpose split into lo/hi)
-        if (any(
-                efuse is not None
-                and getattr(efuse, "name", None) == "KEY_PURPOSE_0_H"
+        if (
+            any(
+                efuse is not None and getattr(efuse, "name", None) == "KEY_PURPOSE_0_H"
                 for efuse in self.parent
             )
             and self.name.startswith("KEY_PURPOSE_")

@@ -4,7 +4,6 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-import binascii
 import struct
 import sys
 import time
@@ -18,7 +17,7 @@ import reedsolo
 
 from .mem_definition import EfuseDefineBlocks, EfuseDefineFields, EfuseDefineRegisters
 from .. import base_fields
-from .. import util
+from ..mem_definition_base import Field
 
 
 class EfuseBlock(base_fields.EfuseBlockBase):
@@ -87,42 +86,23 @@ class EspEfuses(base_fields.EspEfusesBase):
         ]
         if not skip_connect:
             self.get_coding_scheme_warnings()
-        self.efuses = [EfuseField.convert(self, efuse) for efuse in self.Fields.EFUSES]
-        self.efuses += [
-            EfuseField.convert(self, efuse) for efuse in self.Fields.KEYBLOCKS
-        ]
+        self.efuses = self._convert_efuse_defs(self.Fields.EFUSES)
+        self.efuses += self._convert_efuse_defs(self.Fields.KEYBLOCKS)
         if skip_connect:
-            self.efuses += [
-                EfuseField.convert(self, efuse)
-                for efuse in self.Fields.BLOCK2_CALIBRATION_EFUSES
-            ]
+            self.efuses += self._convert_efuse_defs(
+                self.Fields.BLOCK2_CALIBRATION_EFUSES
+            )
         else:
             if self.get_block_version() >= 1:
-                self.efuses += [
-                    EfuseField.convert(self, efuse)
-                    for efuse in self.Fields.BLOCK2_CALIBRATION_EFUSES
-                ]
+                self.efuses += self._convert_efuse_defs(
+                    self.Fields.BLOCK2_CALIBRATION_EFUSES
+                )
 
-    def __getitem__(self, efuse_name):
-        """Return the efuse field with the given name"""
-        for e in self.efuses:
-            if efuse_name == e.name or any(x == efuse_name for x in e.alt_names):
-                return e
-        new_fields = False
-        for efuse in self.Fields.BLOCK2_CALIBRATION_EFUSES:
-            if efuse.name == efuse_name or any(
-                x == efuse_name for x in efuse.alt_names
-            ):
-                self.efuses += [
-                    EfuseField.convert(self, efuse)
-                    for efuse in self.Fields.BLOCK2_CALIBRATION_EFUSES
-                ]
-                new_fields = True
-        if new_fields:
-            for e in self.efuses:
-                if efuse_name == e.name or any(x == efuse_name for x in e.alt_names):
-                    return e
-        raise KeyError
+    def _convert_efuse_defs(self, efuse_defs):
+        return [EfuseField.convert(self, efuse) for efuse in efuse_defs]
+
+    def _get_lazy_efuse_groups(self):
+        return [self.Fields.BLOCK2_CALIBRATION_EFUSES]
 
     def read_coding_scheme(self):
         self.coding_scheme = self.REGS.CODING_SCHEME_RS
@@ -289,7 +269,7 @@ class EspEfuses(base_fields.EspEfusesBase):
 
 class EfuseField(base_fields.EfuseFieldBase):
     @staticmethod
-    def convert(parent, efuse):
+    def convert(parent: base_fields.EspEfusesBase, efuse: Field) -> "EfuseField":
         return {
             "mac": EfuseMacField,
             "keypurpose": EfuseKeyPurposeField,
@@ -298,84 +278,27 @@ class EfuseField(base_fields.EfuseFieldBase):
         }.get(efuse.class_type, EfuseField)(parent, efuse)
 
 
-class EfuseTempSensor(EfuseField):
-    def get(self, from_read=True):
-        value = self.get_bitstring(from_read)
-        sig = -1 if value[0] else 1
-        return sig * value[1:].uint * 0.1
+class EfuseTempSensor(base_fields.EfuseTempSensor, EfuseField):
+    pass
 
 
-class EfuseAdcPointCalibration(EfuseField):
-    def get(self, from_read=True):
-        STEP_SIZE = 4
-        value = self.get_bitstring(from_read)
-        sig = -1 if value[0] else 1
-        return sig * value[1:].uint * STEP_SIZE
+class EfuseAdcPointCalibration(base_fields.EfuseAdcPointCalibration, EfuseField):
+    pass
 
 
-class EfuseMacField(EfuseField):
-    def check_format(self, new_value_str):
-        if new_value_str is None:
-            raise esptool.FatalError(
-                "Required MAC Address in AA:CD:EF:01:02:03 format!"
-            )
-        if new_value_str.count(":") != 5:
-            raise esptool.FatalError(
-                "MAC Address needs to be a 6-byte hexadecimal format "
-                "separated by colons (:)!"
-            )
-        hexad = new_value_str.replace(":", "")
-        if len(hexad) != 12:
-            raise esptool.FatalError(
-                "MAC Address needs to be a 6-byte hexadecimal number "
-                "(12 hexadecimal characters)!"
-            )
-        # order of bytearray = b'\xaa\xcd\xef\x01\x02\x03',
-        bindata = binascii.unhexlify(hexad)
-        # unicast address check according to
-        # https://tools.ietf.org/html/rfc7042#section-2.1
-        if esptool.util.byte(bindata, 0) & 0x01:
-            raise esptool.FatalError("Custom MAC must be a unicast MAC!")
-        return bindata
-
-    def check(self):
-        errs, fail = self.parent.get_block_errors(self.block)
-        if errs != 0 or fail:
-            output = f"Block{self.block} has ERRORS:{errs} FAIL:{fail}"
-        else:
-            output = "OK"
-        return "(" + output + ")"
-
-    def get(self, from_read=True):
-        if self.name == "CUSTOM_MAC":
-            mac = self.get_raw(from_read)[::-1]
-        else:
-            mac = self.get_raw(from_read)
-        return " ".join([util.hexify(mac, ":"), self.check()])
-
-    def save(self, new_value):
-        def print_field(e, new_value):
-            log.print(
-                f"    - '{e.name}' ({e.description}) {e.get_bitstring()} -> {new_value}"
-            )
-
-        if self.name == "CUSTOM_MAC":
-            bitarray_mac = self.convert_to_bitstring(new_value)
-            print_field(self, bitarray_mac)
-            super().save(new_value)
-        else:
-            raise esptool.FatalError("Writing Factory MAC address is not supported.")
+class EfuseMacField(base_fields.EfuseMacFieldBase, EfuseField):
+    pass
 
 
-class EfuseKeyPurposeField(EfuseField):
+class EfuseKeyPurposeField(base_fields.EfuseKeyPurposeFieldBase, EfuseField):
     # fmt: off
+    # Note: ESP32-C2 does not use reverse nor read protect fields here,
+    # but they are included for compatibility with other chips.
+    # ESP32-C2 does not have proper key purpose fields, but they are used only in espefuse to distinguish between keys.
     KEY_PURPOSES = [
-        ("USER",                                        0, None),      # User purposes (software-only use)
-        ("XTS_AES_128_KEY",                             1, None),      # (whole 256bits) flash/PSRAM encryption
-        ("XTS_AES_128_KEY_DERIVED_FROM_128_EFUSE_BITS", 2, None),      # (lo 128bits) flash/PSRAM encryption
-        ("SECURE_BOOT_DIGEST",                          3, "DIGEST"),
-        # (hi 128bits) Secure Boot key digest
-    ]  # fmt: on
-
-    KEY_PURPOSES_NAME = [name[0] for name in KEY_PURPOSES]
-    DIGEST_KEY_PURPOSES = [name[0] for name in KEY_PURPOSES if name[2] == "DIGEST"]
+        ("USER",                                        0, None,     None,      "no_need_rd_protect"),  # User purposes (software-only use)
+        ("XTS_AES_128_KEY",                             1, None,     "Reverse", "need_rd_protect"),     # (whole 256bits) flash/PSRAM encryption
+        ("XTS_AES_128_KEY_DERIVED_FROM_128_EFUSE_BITS", 2, None,     "Reverse", "need_rd_protect"),     # (lo 128bits) flash/PSRAM encryption
+        ("SECURE_BOOT_DIGEST",                          3, "DIGEST", None,      "no_need_rd_protect"),  # (hi 128bits) Secure Boot key digest
+    ]
+    # fmt: on

@@ -46,10 +46,10 @@ class ESP32C5ROM(ESP32C6ROM):
     EFUSE_DIS_DOWNLOAD_MANUAL_ENCRYPT = 1 << 20
 
     EFUSE_SPI_BOOT_CRYPT_CNT_REG = EFUSE_BASE + 0x034
-    EFUSE_SPI_BOOT_CRYPT_CNT_MASK = 0x7 << 18
+    EFUSE_SPI_BOOT_CRYPT_CNT_MASK = 0x7 << 16
 
     EFUSE_SECURE_BOOT_EN_REG = EFUSE_BASE + 0x038
-    EFUSE_SECURE_BOOT_EN_MASK = 1 << 20
+    EFUSE_SECURE_BOOT_EN_MASK = 1 << 25
 
     IROM_MAP_START = 0x42000000
     IROM_MAP_END = 0x44000000
@@ -195,6 +195,15 @@ class ESP32C5ROM(ESP32C6ROM):
         ][key_block]
         return (self.read_reg(reg) >> shift) & 0x1F
 
+    def uses_key_manager_for_flash_encryption(self):
+        return bool(
+            (
+                self.read_reg(self.EFUSE_FORCE_USE_KEY_MANAGER_KEY_REG)
+                >> self.EFUSE_FORCE_USE_KEY_MANAGER_KEY_SHIFT
+            )
+            & self.FORCE_USE_KEY_MANAGER_VAL_XTS_AES_KEY
+        )
+
     def is_flash_encryption_key_valid(self):
         # Need to see an AES-128 key
         purposes = [
@@ -204,10 +213,7 @@ class ESP32C5ROM(ESP32C6ROM):
         if any(p == self.PURPOSE_VAL_XTS_AES128_KEY for p in purposes):
             return True
 
-        return (
-            self.read_reg(self.EFUSE_FORCE_USE_KEY_MANAGER_KEY_REG)
-            >> self.EFUSE_FORCE_USE_KEY_MANAGER_KEY_SHIFT
-        ) & self.FORCE_USE_KEY_MANAGER_VAL_XTS_AES_KEY
+        return self.uses_key_manager_for_flash_encryption()
 
     def check_spi_connection(self, spi_connection):
         if not set(spi_connection).issubset(set(range(0, 29))):

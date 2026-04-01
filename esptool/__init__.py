@@ -272,7 +272,10 @@ def add_spi_flash_options(
 def check_flash_size(esp: ESPLoader, address: int, size: int) -> None:
     # Check if we are writing/erasing/reading past 16MB boundary
     if (
-        not (esp.IS_STUB and esp.CHIP_NAME in ["ESP32-S3", "ESP32-P4", "ESP32-C5"])
+        not (
+            esp.IS_STUB
+            and esp.CHIP_NAME in ["ESP32-S3", "ESP32-P4", "ESP32-C5", "ESP32-C61"]
+        )
         and address + size > 0x1000000
     ):
         raise FatalError(
@@ -420,8 +423,16 @@ def cli(
 
 def prepare_esp_object(ctx):
     """Prepare ESP object for operation"""
+    if ctx.obj.get("plugins") and ctx.obj["no_stub"]:
+        raise FatalError(
+            "Plugin commands require the stub flasher. Remove --no-stub to use plugins."
+        )
     if ctx.obj["stub_version"]:
         StubFlasher.set_stub_subdir(ctx.obj["stub_version"])
+    elif ctx.obj.get("plugins"):
+        # Plugin support requires stubs built with the plugin mechanism (dir "2").
+        # Prefer that directory when plugins are requested.
+        StubFlasher.set_stub_subdir("2")
     # Commands that require an ESP object (flash read/write, etc.)
     # 1) Get the ESP object
     #######################
@@ -521,7 +532,7 @@ def prepare_esp_object(ctx):
     ############################
 
     if not ctx.obj["no_stub"]:
-        esp = run_stub(esp)
+        esp = run_stub(esp, plugins=ctx.obj.get("plugins"))
 
     # 5) Configure the baud rate and voltage regulator
     ##################################################
@@ -661,18 +672,25 @@ def write_mem_cli(ctx, address, value, mask):
     "This list is zipped sequentially with the files being flashed.",
 )
 @click.option(
-    "--no-diff-verify",
+    "--trust-flash-content",
     is_flag=True,
-    help="Skip MD5 checks for faster reflashing. Requires --diff-with to be specified. "
-    "Must be sure the flash content has not changed since the last flash.",
+    help="Skip post-flash verification of unchanged files when using --diff-with to "
+    "save time. Only unchanged files are skipped without an MD5 check, written data "
+    "is still verified after write and the whole file is reflashed if verification "
+    "fails. Requires --diff-with. Use only when flash has not been modified since the "
+    "last flash (e.g. no other tool, app, or manual change touched the data in flash).",
+    exclusive_with=["skip_flashed"],
+    cls=MutuallyExclusiveOption,
 )
 @click.option(
     "--skip-flashed",
     "-s",
     is_flag=True,
-    help="Skip flashing if the new binary is already in flash. Will perform MD5 checks "
+    help="Skip flashing if the new binary is already in flash. Performs MD5 checks "
     "to verify the flash content matches the new binary. "
-    "Automatically enabled for each file with a valid --diff-with pair.",
+    "Only for use when no --diff-with files are specified (mutually exclusive).",
+    exclusive_with=["diff_with", "trust_flash_content"],
+    cls=MutuallyExclusiveOption,
 )
 @click.option(
     "--force",
@@ -711,11 +729,10 @@ def write_flash_cli(ctx, addr_filename, **kwargs):
             "Options --encrypt and --encrypt-files "
             "must not be specified at the same time."
         )
-    if kwargs["skip_flashed"] and kwargs["no_diff_verify"]:
-        raise FatalError(
-            "Options --skip-flashed and --no-diff-verify "
-            "must not be specified at the same time."
-        )
+    if kwargs["trust_flash_content"] and not kwargs.get("diff_with"):
+        raise FatalError("Option --trust-flash-content requires --diff-with.")
+    # Map CLI name to internal name for write_flash
+    kwargs["no_diff_verify"] = kwargs.pop("trust_flash_content", False)
     # Expand HEX file splits in diff_with if any
     if "diff_with" in kwargs and kwargs["diff_with"]:
         diff_with_expanded: list = []

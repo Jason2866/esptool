@@ -439,6 +439,14 @@ class TestReadProtectionCommands(EfuseTestCase):
             "Read back the burn value is not possible.",
         )
 
+    @pytest.mark.skipif(arg_chip != "esp32", reason="No need to test multiple times")
+    def test_read_protect_invalid_name(self):
+        self.espefuse_py(
+            "read-protect-efuse INVALID_NAME",
+            check_msg="Invalid value",
+            ret_code=2,
+        )
+
 
 class TestWriteProtectionCommands(EfuseTestCase):
     def test_write_protect_efuse(self):
@@ -494,6 +502,14 @@ class TestWriteProtectionCommands(EfuseTestCase):
                 "due to the WR_DIS field being already write-disabled",
                 ret_code=2,
             )
+
+    @pytest.mark.skipif(arg_chip != "esp32", reason="No need to test multiple times")
+    def test_write_protect_invalid_name(self):
+        self.espefuse_py(
+            "write-protect-efuse INVALID_NAME",
+            check_msg="Invalid value",
+            ret_code=2,
+        )
 
 
 class TestBurnCustomMacCommands(EfuseTestCase):

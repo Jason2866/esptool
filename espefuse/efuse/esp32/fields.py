@@ -4,7 +4,6 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-import binascii
 import struct
 import time
 
@@ -14,6 +13,7 @@ from esptool import log
 from .mem_definition import EfuseDefineBlocks, EfuseDefineFields, EfuseDefineRegisters
 from .. import base_fields
 from .. import util
+from ..mem_definition_base import Field
 
 
 class EfuseBlock(base_fields.EfuseBlockBase):
@@ -90,73 +90,31 @@ class EspEfuses(base_fields.EspEfusesBase):
         ]
         if not skip_connect:
             self.get_coding_scheme_warnings()
-        self.efuses = [EfuseField.convert(self, efuse) for efuse in self.Fields.EFUSES]
+        self.efuses = self._convert_efuse_defs(self.Fields.EFUSES)
         if skip_connect:
-            self.efuses += [
-                EfuseField.convert(self, efuse) for efuse in self.Fields.KEYBLOCKS_256
-            ]
-            self.efuses += [
-                EfuseField.convert(self, efuse) for efuse in self.Fields.CUSTOM_MAC
-            ]
-            self.efuses += [
-                EfuseField.convert(self, efuse) for efuse in self.Fields.ADC_CALIBRATION
-            ]
+            self.efuses += self._convert_efuse_defs(self.Fields.KEYBLOCKS_256)
+            self.efuses += self._convert_efuse_defs(self.Fields.CUSTOM_MAC)
+            self.efuses += self._convert_efuse_defs(self.Fields.ADC_CALIBRATION)
         else:
             if self.coding_scheme == self.REGS.CODING_SCHEME_NONE:
-                self.efuses += [
-                    EfuseField.convert(self, efuse)
-                    for efuse in self.Fields.KEYBLOCKS_256
-                ]
+                self.efuses += self._convert_efuse_defs(self.Fields.KEYBLOCKS_256)
             elif self.coding_scheme == self.REGS.CODING_SCHEME_34:
-                self.efuses += [
-                    EfuseField.convert(self, efuse)
-                    for efuse in self.Fields.KEYBLOCKS_192
-                ]
+                self.efuses += self._convert_efuse_defs(self.Fields.KEYBLOCKS_192)
             else:
                 raise esptool.FatalError(
                     f"The coding scheme ({self.coding_scheme}) - is not supported"
                 )
             if self["MAC_VERSION"].get() == 1:
-                self.efuses += [
-                    EfuseField.convert(self, efuse) for efuse in self.Fields.CUSTOM_MAC
-                ]
+                self.efuses += self._convert_efuse_defs(self.Fields.CUSTOM_MAC)
             if self["BLK3_PART_RESERVE"].get():
-                self.efuses += [
-                    EfuseField.convert(self, efuse)
-                    for efuse in self.Fields.ADC_CALIBRATION
-                ]
-            self.efuses += [
-                EfuseField.convert(self, efuse) for efuse in self.Fields.CALC
-            ]
+                self.efuses += self._convert_efuse_defs(self.Fields.ADC_CALIBRATION)
+            self.efuses += self._convert_efuse_defs(self.Fields.CALC)
 
-    def __getitem__(self, efuse_name):
-        """Return the efuse field with the given name"""
-        for e in self.efuses:
-            if efuse_name == e.name or any(x == efuse_name for x in e.alt_names):
-                return e
-        new_fields = False
-        for efuse in self.Fields.CUSTOM_MAC:
-            if efuse.name == efuse_name or any(
-                x == efuse_name for x in efuse.alt_names
-            ):
-                self.efuses += [
-                    EfuseField.convert(self, efuse) for efuse in self.Fields.CUSTOM_MAC
-                ]
-                new_fields = True
-        for efuse in self.Fields.ADC_CALIBRATION:
-            if efuse.name == efuse_name or any(
-                x == efuse_name for x in efuse.alt_names
-            ):
-                self.efuses += [
-                    EfuseField.convert(self, efuse)
-                    for efuse in self.Fields.ADC_CALIBRATION
-                ]
-                new_fields = True
-        if new_fields:
-            for e in self.efuses:
-                if efuse_name == e.name or any(x == efuse_name for x in e.alt_names):
-                    return e
-        raise KeyError
+    def _convert_efuse_defs(self, efuse_defs):
+        return [EfuseField.convert(self, efuse) for efuse in efuse_defs]
+
+    def _get_lazy_efuse_groups(self):
+        return [self.Fields.CUSTOM_MAC, self.Fields.ADC_CALIBRATION]
 
     def read_coding_scheme(self):
         coding_scheme = (
@@ -251,7 +209,7 @@ class EspEfuses(base_fields.EspEfusesBase):
 
 class EfuseField(base_fields.EfuseFieldBase):
     @staticmethod
-    def convert(parent, efuse):
+    def convert(parent: base_fields.EspEfusesBase, efuse: Field) -> "EfuseField":
         return {
             "mac": EfuseMacField,
             "spipin": EfuseSpiPinField,
@@ -262,35 +220,11 @@ class EfuseField(base_fields.EfuseFieldBase):
         }.get(efuse.class_type, EfuseField)(parent, efuse)
 
 
-class EfuseMacField(EfuseField):
+class EfuseMacField(base_fields.EfuseMacFieldBase, EfuseField):
     """
     Supports: MAC and CUSTOM_MAC fields.
     (if MAC_VERSION == 1 then the CUSTOM_MAC is used)
     """
-
-    def check_format(self, new_value_str: str | None):
-        if new_value_str is None:
-            raise esptool.FatalError(
-                "Required MAC Address in AA:CD:EF:01:02:03 format!"
-            )
-        if new_value_str.count(":") != 5:
-            raise esptool.FatalError(
-                "MAC Address needs to be a 6-byte hexadecimal format "
-                "separated by colons (:)!"
-            )
-        hexad = new_value_str.replace(":", "")
-        if len(hexad) != 12:
-            raise esptool.FatalError(
-                "MAC Address needs to be a 6-byte hexadecimal number "
-                "(12 hexadecimal characters)!"
-            )
-        # order of bytearray = b'\xaa\xcd\xef\x01\x02\x03',
-        bindata = binascii.unhexlify(hexad)
-        # unicast address check according to
-        # https://tools.ietf.org/html/rfc7042#section-2.1
-        if esptool.util.byte(bindata, 0) & 0x01:
-            raise esptool.FatalError("Custom MAC must be a unicast MAC!")
-        return bindata
 
     @staticmethod
     def get_and_check(raw_mac, stored_crc):
@@ -354,7 +288,8 @@ class EfuseMacField(EfuseField):
 
             bitarray_mac = self.convert_to_bitstring(new_value)
             print_field(self, bitarray_mac)
-            super().save(new_value)
+            # Skip EfuseMacFieldBase.save() to avoid printing field info twice
+            base_fields.EfuseFieldBase.save(self, new_value)
 
             crc_val = self.calc_crc(new_value)
             crc_field = self.parent["CUSTOM_MAC_CRC"]
@@ -366,7 +301,7 @@ class EfuseMacField(EfuseField):
             raise esptool.FatalError("Writing Factory MAC address is not supported")
 
 
-class EfuseWafer(EfuseField):
+class EfuseWafer(base_fields.EfuseWaferBase, EfuseField):
     def get(self, from_read=True):
         rev_bit0 = self.parent["CHIP_VER_REV1"].get(from_read)
         assert self.parent["CHIP_VER_REV1"].bit_len == 1
@@ -385,9 +320,6 @@ class EfuseWafer(EfuseField):
             7: 3,
         }.get(combine_value, 0)
         return revision
-
-    def save(self, new_value):
-        raise esptool.FatalError(f"Burning {self.name} is not supported")
 
 
 class EfusePkg(EfuseField):

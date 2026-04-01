@@ -28,7 +28,7 @@ class ESP32S31ROM(ESP32C5ROM):
     EFUSE_BLOCK1_ADDR = EFUSE_BASE + 0x044
     MAC_EFUSE_REG = EFUSE_BASE + 0x044
 
-    SPI_REG_BASE = 0x20500000  # SPIMEM1
+    SPI_REG_BASE = 0x20501000
     SPI_USR_OFFS = 0x18
     SPI_USR1_OFFS = 0x1C
     SPI_USR2_OFFS = 0x20
@@ -57,10 +57,14 @@ class ESP32S31ROM(ESP32C5ROM):
     EFUSE_DIS_DOWNLOAD_MANUAL_ENCRYPT = 1 << 20
 
     EFUSE_SPI_BOOT_CRYPT_CNT_REG = EFUSE_BASE + 0x034
-    EFUSE_SPI_BOOT_CRYPT_CNT_MASK = 0x7 << 18
+    EFUSE_SPI_BOOT_CRYPT_CNT_MASK = 0x7 << 21
 
-    EFUSE_SECURE_BOOT_EN_REG = EFUSE_BASE + 0x038
-    EFUSE_SECURE_BOOT_EN_MASK = 1 << 20
+    EFUSE_SECURE_BOOT_EN_REG = EFUSE_BASE + 0x03C
+    EFUSE_SECURE_BOOT_EN_MASK = 1 << 2
+
+    EFUSE_FORCE_USE_KEY_MANAGER_KEY_REG = EFUSE_BASE + 0x034
+    EFUSE_FORCE_USE_KEY_MANAGER_KEY_SHIFT = 12
+    FORCE_USE_KEY_MANAGER_VAL_XTS_AES_KEY = 2
 
     PURPOSE_VAL_XTS_AES256_KEY_1 = 2
     PURPOSE_VAL_XTS_AES256_KEY_2 = 3
@@ -175,6 +179,15 @@ class ESP32S31ROM(ESP32C5ROM):
         ][key_block]
         return (self.read_reg(reg) >> shift) & 0xF
 
+    def uses_key_manager_for_flash_encryption(self):
+        return bool(
+            (
+                self.read_reg(self.EFUSE_FORCE_USE_KEY_MANAGER_KEY_REG)
+                >> self.EFUSE_FORCE_USE_KEY_MANAGER_KEY_SHIFT
+            )
+            & self.FORCE_USE_KEY_MANAGER_VAL_XTS_AES_KEY
+        )
+
     def is_flash_encryption_key_valid(self):
         # Need to see either an AES-128 key or two AES-256 keys
         purposes = [
@@ -184,9 +197,12 @@ class ESP32S31ROM(ESP32C5ROM):
         if any(p == self.PURPOSE_VAL_XTS_AES128_KEY for p in purposes):
             return True
 
-        return any(p == self.PURPOSE_VAL_XTS_AES256_KEY_1 for p in purposes) and any(
+        if any(p == self.PURPOSE_VAL_XTS_AES256_KEY_1 for p in purposes) and any(
             p == self.PURPOSE_VAL_XTS_AES256_KEY_2 for p in purposes
-        )
+        ):
+            return True
+
+        return self.uses_key_manager_for_flash_encryption()
 
     def change_baud(self, baud):
         ESPLoader.change_baud(self, baud)
