@@ -25,7 +25,7 @@ jobs:
           - platform: macos-arm64
             runner: macos-latest
           - platform: linux-armv7
-            runner: ubuntu-latest
+            runner: ubuntu-24.04-arm
           - platform: linux-aarch64
             runner: ubuntu-24.04-arm
     env:
@@ -38,7 +38,6 @@ jobs:
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
-        if: (matrix.platform != 'linux-armv7') || contains(github.ref_name, 'dev')
         with:
           python-version: "3.13"
       - name: Patch version for dev releases
