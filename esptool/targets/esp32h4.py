@@ -5,10 +5,10 @@
 
 import struct
 
-from .esp32c3 import ESP32C3ROM
 from ..loader import ESPLoader, StubMixin
 from ..logger import log
 from ..util import FatalError
+from .esp32c3 import ESP32C3ROM
 
 
 class ESP32H4ROM(ESP32C3ROM):
@@ -73,9 +73,6 @@ class ESP32H4ROM(ESP32C3ROM):
 
     FLASH_ENCRYPTED_WRITE_ALIGN = 16
 
-    UARTDEV_BUF_NO = 0x4087F580  # Variable in ROM .bss which indicates the port in use
-    UARTDEV_BUF_NO_USB_JTAG_SERIAL = 3  # The above var when USB-JTAG/Serial is used
-
     DR_REG_TIMG_BASE = 0x60090000
     RTC_CNTL_WDTCONFIG0_REG = DR_REG_TIMG_BASE + 0x48  # TIMG_WDTCONFIG0_REG
     RTC_CNTL_WDTCONFIG1_REG = DR_REG_TIMG_BASE + 0x4C  # TIMG_WDTCONFIG1_REG
@@ -92,7 +89,7 @@ class ESP32H4ROM(ESP32C3ROM):
     PCR_SYSCLK_XTAL_FREQ_S = 24
 
     FLASH_FREQUENCY = {
-        "48m": 0x0,
+        "48m": 0xF,
         "24m": 0x0,
         "16m": 0x1,
         "12m": 0x2,

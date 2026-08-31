@@ -3,10 +3,10 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-from .esp32c6 import ESP32C6ROM
 from ..loader import ESPLoader, StubMixin
 from ..logger import log
 from ..util import FatalError
+from .esp32c6 import ESP32C6ROM
 
 
 class ESP32H2ROM(ESP32C6ROM):
@@ -22,9 +22,6 @@ class ESP32H2ROM(ESP32C6ROM):
     RTC_CNTL_SWD_AUTO_FEED_EN = 1 << 18
     RTC_CNTL_SWD_WPROTECT_REG = DR_REG_LP_WDT_BASE + 0x0024  # LP_WDT_SWD_WPROTECT_REG
     RTC_CNTL_SWD_WKEY = 0x50D83AA1  # LP_WDT_SWD_WKEY, same as WDT key in this case
-
-    UARTDEV_BUF_NO = 0x4084FEFC  # Variable in ROM .bss which indicates the port in use
-    UARTDEV_BUF_NO_USB_JTAG_SERIAL = 3  # The above var when USB-JTAG/Serial is used
 
     FLASH_FREQUENCY = {
         "48m": 0xF,

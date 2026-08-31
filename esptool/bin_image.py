@@ -25,8 +25,8 @@ from .targets import (
     ESP32C61ROM,
     ESP32E22ROM,
     ESP32H2ROM,
-    ESP32H21ROM,
     ESP32H4ROM,
+    ESP32H21ROM,
     ESP32P4ROM,
     ESP32ROM,
     ESP32S2ROM,
@@ -34,7 +34,7 @@ from .targets import (
     ESP32S31ROM,
     ESP8266ROM,
 )
-from .util import FatalError, byte, ImageSource, get_bytes, pad_to
+from .util import FatalError, ImageSource, byte, get_bytes, pad_to
 
 
 def align_file_position(f, size):
@@ -870,7 +870,12 @@ class ESP32FirmwareImage(BaseFirmwareImage):
                 # reversing to match the same section order from linker script
                 flash_segments.reverse()
                 for segment in flash_segments:
-                    pad_len = get_alignment_data_needed(segment)
+                    # Pad data length so that, once the pad header and the
+                    # next flash segment header are written, the file
+                    # position matches the flash segment's alignment.
+                    pad_len = (
+                        segment.addr - f.tell() - 2 * self.SEG_HEADER_LEN
+                    ) % self.IROM_ALIGN
                     # Some chips have a non-zero load offset (eg. 0x1000)
                     # therefore we shift the ROM segments "-load_offset"
                     # so it will be aligned properly after it is flashed

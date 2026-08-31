@@ -2,9 +2,10 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-from abc import ABC, abstractmethod
-import sys
 import os
+import sys
+from abc import ABC, abstractmethod
+from typing import ClassVar
 
 
 class TemplateLogger(ABC):
@@ -66,6 +67,8 @@ class TemplateLogger(ABC):
 
 
 class EsptoolLogger(TemplateLogger):
+    instance: ClassVar["EsptoolLogger | None"] = None
+
     ansi_red: str = ""
     ansi_yellow: str = ""
     ansi_blue: str = ""
@@ -87,21 +90,22 @@ class EsptoolLogger(TemplateLogger):
         """
         Singleton to ensure only one instance of the logger exists.
         """
-        if not hasattr(cls, "instance"):
+        if cls.instance is None:
             cls.instance = super().__new__(cls)
             cls.instance.set_verbosity("auto")
         return cls.instance
 
     @classmethod
     def _del(cls) -> None:
-        if hasattr(cls, "instance"):
-            del cls.instance
+        cls.instance = None
 
     @classmethod
     def _set_smart_features(cls, override: bool | None = None):
+        inst = cls.instance
+        assert inst is not None
         # Check for smart terminal and color support
         if override is not None:
-            cls.instance._smart_features = override
+            inst._smart_features = override
         else:
             is_tty = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
             term_supports_color = os.getenv("TERM", "").lower() in (
@@ -115,11 +119,9 @@ class EsptoolLogger(TemplateLogger):
             no_color = os.getenv("NO_COLOR", "").strip().lower() in ("1", "true", "yes")
 
             # Determine if colors should be enabled
-            cls.instance._smart_features = (
-                is_tty or term_supports_color and not no_color
-            )
+            inst._smart_features = is_tty or term_supports_color and not no_color
             # Handle Windows specifically
-            if sys.platform == "win32" and cls.instance._smart_features:
+            if sys.platform == "win32" and inst._smart_features:
                 try:
                     from colorama import init
 

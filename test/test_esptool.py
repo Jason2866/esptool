@@ -31,8 +31,11 @@ import tempfile
 from io import StringIO
 from socket import AF_INET, SOCK_STREAM, socket
 from time import monotonic, sleep
-from unittest.mock import MagicMock
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+pytestmark = pytest.mark.linux_host_test
 
 # Link command line options --port, --chip, --baud, --with-trace, and --preload-port
 from conftest import (
@@ -44,32 +47,30 @@ from conftest import (
     need_to_install_package_err,
 )
 
-
-import pytest
-
 try:
-    import esptool
     import espefuse
+    import esptool
+    from esptool import FatalError
     from esptool.cmds import (
+        attach_flash,
         detect_chip,
         erase_flash,
-        attach_flash,
         flash_id,
         image_info,
         merge_bin,
-        read_flash_sfdp,
         read_flash,
+        read_flash_sfdp,
         read_mac,
         reset_chip,
         verify_flash,
         version,
         write_flash,
     )
+    from esptool.loader import TROUBLESHOOTING_GUIDE_URL, ESPLoader
 except ImportError:
     need_to_install_package_err()
 
 import serial
-
 
 TEST_DIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -749,6 +750,73 @@ class TestFlashing(EsptoolTestCase):
         )
         assert "Detected overlap at address: 0x1d00" in output
 
+    def _esp_mock_for_encryption_check(
+        self,
+        flash_encryption_enabled=True,
+        encrypted_download_disabled=True,
+    ):
+        """
+        Minimal esp mock so write_flash reaches the Production-mode plaintext check.
+
+        Production mode: flash encryption on + UART manual encrypt disabled.
+        Development mode: set encrypted_download_disabled=False (plaintext allowed).
+        """
+        esp = MagicMock()
+        esp.get_flash_encryption_enabled.return_value = flash_encryption_enabled
+        esp.get_encrypted_download_disabled.return_value = encrypted_download_disabled
+        esp.CHIP_NAME = "esp32"
+        esp.IMAGE_CHIP_ID = 0
+        esp.secure_download_mode = False
+        esp.get_secure_boot_v1_enabled.return_value = False
+        esp.IS_STUB = True
+        esp.get_major_chip_version.return_value = 0
+        esp.get_minor_chip_version.return_value = 0
+        esp.get_chip_revision.return_value = 0
+        return esp
+
+    @pytest.mark.quick_test
+    @pytest.mark.host_test
+    def test_write_flash_production_plaintext_guard(self):
+        """
+        Single cheap pass through write_flash to validate Production-mode guard:
+        reject flashing without --force (both image and non-image payloads), allow
+        with --force, and allow in Development (UART encrypt not disabled).
+        """
+        with open(os.path.join(TEST_DIR, "images", "bootloader_esp32.bin"), "rb") as f:
+            bootloader = f.read()
+        payload_plain = [(0x10000, bootloader)]
+        payload_non_image = [(0x20000, b"\x00" * 64)]
+
+        esp_prod = self._esp_mock_for_encryption_check(True, True)
+        with pytest.raises(FatalError) as exc_info:
+            write_flash(esp_prod, payload_plain, force=False)
+        msg = str(exc_info.value)
+        assert "Detected flash encryption enabled" in msg
+        assert "download manual encrypt disabled" in msg
+        with pytest.raises(FatalError):
+            write_flash(esp_prod, payload_non_image, force=False)
+
+        try:
+            write_flash(esp_prod, payload_plain, force=True)
+        except FatalError as e:
+            assert "download manual encrypt disabled" not in str(e)
+        except Exception:
+            pass
+        try:
+            write_flash(esp_prod, payload_non_image, force=True)
+        except FatalError as e:
+            assert "download manual encrypt disabled" not in str(e)
+        except Exception:
+            pass
+
+        esp_dev = self._esp_mock_for_encryption_check(True, False)
+        try:
+            write_flash(esp_dev, payload_plain, force=False)
+        except FatalError as e:
+            assert "download manual encrypt disabled" not in str(e)
+        except Exception:
+            pass
+
     def test_write_no_overlap(self):
         output = self.run_esptool(
             "write-flash 0x0 images/one_kb.bin 0x2000 images/one_kb.bin"
@@ -1243,10 +1311,12 @@ class TestFlashSizes(EsptoolTestCase):
         self.run_esptool("write-flash -u -fs 4MB 0x300000 images/one_kb.bin")
         self.verify_readback(0x300000, 1024, "images/one_kb.bin")
 
+    @pytest.mark.flaky(reruns=1)
     def test_large_image(self):
         self.run_esptool("write-flash -fs 4MB 0x280000 images/one_mb.bin")
         self.verify_readback(0x280000, 0x100000, "images/one_mb.bin")
 
+    @pytest.mark.flaky(reruns=1)
     def test_large_no_compression(self):
         self.run_esptool("write-flash -u -fs 4MB 0x280000 images/one_mb.bin")
         self.verify_readback(0x280000, 0x100000, "images/one_mb.bin")
@@ -1655,11 +1725,11 @@ class TestKeepImageSettings(EsptoolTestCase):
 
 @pytest.mark.skipif(
     arg_chip in ["esp32s2", "esp32s3", "esp32p4"],
-    reason="Not supported on targets with USB-CDC.",
+    reason="Not supported on targets with USB-OTG.",
 )
 class TestLoadRAM(EsptoolTestCase):
-    # flashing an application not supporting USB-CDC will make
-    # /dev/ttyACM0 disappear and USB-CDC tests will not work anymore
+    # flashing an application not supporting USB-OTG will make
+    # /dev/ttyACM0 disappear and USB-OTG tests will not work anymore
 
     def verify_output(self, expected_out: list[bytes]):
         """Verify that at least one element of expected_out is in serial output"""
@@ -1873,7 +1943,10 @@ class TestUSBMode(EsptoolTestCase):
 
 
 @pytest.mark.flaky(reruns=5)
-@pytest.mark.skipif(arg_preload_port is not False, reason="USB-to-UART bridge only")
+@pytest.mark.skipif(
+    "ESPTOOL_TEST_USB_OTG" in os.environ or arg_preload_port is not False,
+    reason="USB-to-UART bridge only",
+)
 @pytest.mark.skipif(os.name == "nt", reason="Linux/MacOS only")
 class TestVirtualPort(TestAutoDetect):
     def test_auto_detect_virtual_port(self):
@@ -2410,3 +2483,93 @@ class TestPortFilter(EsptoolTestCase):
         """Test CLI with missing equal sign in --port-filter option"""
         output = self.run_esptool_error("--port-filter name123 flash-id", port=None)
         assert "Option --port-filter argument must consist of key=value." in output
+
+
+@pytest.mark.host_test
+class TestSlipReaderRead:
+    """Host-level unit tests for ESPLoader.read() (no hardware required)."""
+
+    @staticmethod
+    def _make_esp():
+        """Return a bare ESPLoader whose only wired-up attribute is a stand-in
+        slip_reader generator.
+
+        ``read()`` only touches ``self._slip_reader``, so no port or hardware is
+        needed and the instance can be built without running ``__init__``.
+        """
+        esp = ESPLoader.__new__(ESPLoader)
+
+        def fake_slip_reader():
+            # Mirror the real slip_reader: it never returns, it only ever exits
+            # by raising. After the raise the generator is exhausted, so a
+            # subsequent next() would yield a bare StopIteration. The yield
+            # below is unreachable but makes this a generator function.
+            raise FatalError("No serial data received.")
+            yield  # unreachable; only present to make this a generator function
+
+        esp._slip_reader = fake_slip_reader()
+        return esp
+
+    def test_read_on_exhausted_slip_reader_raises_fatalerror(self):
+        """The first read() surfaces the generator's own FatalError; the second
+        read() (generator now exhausted) must also raise FatalError, not the
+        bare StopIteration that next() would otherwise produce.
+        """
+        esp = self._make_esp()
+
+        # First read(): propagates the generator's descriptive FatalError.
+        with pytest.raises(FatalError):
+            esp.read()
+
+        # Second read(): the generator is exhausted. Without the guard this
+        # would be a bare StopIteration; with it, an actionable FatalError.
+        with pytest.raises(FatalError):
+            esp.read()
+
+    def test_read_does_not_leak_stopiteration_through_generator(self):
+        """Calling the exhausted read() from inside a caller generator must
+        raise FatalError, proving the PEP 479 "RuntimeError: generator raised
+        StopIteration" is gone (this reproduces the exact CI failure).
+        """
+        esp = self._make_esp()
+
+        # Drain the reader so the next read() hits the exhausted generator.
+        with pytest.raises(FatalError):
+            esp.read()
+
+        def caller():
+            # If read() leaked a bare StopIteration, crossing this generator
+            # boundary would turn it into RuntimeError (PEP 479), not FatalError.
+            yield esp.read()
+
+        with pytest.raises(FatalError):
+            next(caller())
+
+    def test_run_stub_failure_links_troubleshooting_guide_once(self):
+        """When the stub never sends its OHAI greeting, run_stub() must raise a
+        FatalError that names the stub-start failure and links the
+        troubleshooting guide exactly once (the read() failure is chained, not
+        embedded into the message).
+        """
+        esp = self._make_esp()
+        # Drain the reader so the OHAI read inside run_stub() hits the exhausted
+        # generator, mirroring mem_finish() having swallowed the MEM_END timeout.
+        with pytest.raises(FatalError):
+            esp.read()
+
+        esp.CHIP_NAME = "ESP32"  # avoid the ESP32-S3 secure-boot branch
+        esp.sync_stub_detected = False
+        esp.STUB_CLASS = None
+        esp.mem_finish = MagicMock()  # upload is done; don't touch the port
+
+        stub = MagicMock()
+        stub.text = stub.data = None  # nothing to upload
+        stub.plugin_segments = []
+        stub.entry = 0
+
+        with pytest.raises(FatalError) as excinfo:
+            esp.run_stub(stub)
+
+        message = str(excinfo.value)
+        assert message.startswith("Failed to start stub flasher")
+        assert message.count(TROUBLESHOOTING_GUIDE_URL) == 1

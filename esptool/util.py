@@ -3,10 +3,10 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 from __future__ import annotations
+
 import os
 import re
 import struct
-
 from typing import IO, TypeAlias
 
 # Define a custom type for the input
@@ -131,6 +131,7 @@ def get_key_from_value(dict, val):
 def check_deprecated_py_suffix(module_name: str) -> None:
     """Check if called with deprecated .py suffix"""
     import sys
+
     from esptool import log
 
     script_name = sys.argv[0] if sys.argv else ""
@@ -206,6 +207,8 @@ class FatalError(RuntimeError):
             0xC700: "Inflate error",
             0xC800: "Not enough data",
             0xC900: "Too much data",
+            0xCA00: "NAND program failed (P_FAIL)",
+            0xCB00: "NAND erase failed (E_FAIL)",
             0xFF00: "Command not implemented",
         }
 
@@ -213,6 +216,10 @@ class FatalError(RuntimeError):
         message += " (result was {}: {})".format(
             hexify(result), err_defs.get(err_code[0], "Unknown result")
         )
+        if err_code[0] == 0xCA00:
+            return NANDProgramFailed(message)
+        if err_code[0] == 0xCB00:
+            return NANDEraseFailed(message)
         return FatalError(message)
 
 
@@ -235,6 +242,28 @@ class NotSupportedError(FatalError):
             self,
             f"{function_name} is not supported by {esp.CHIP_NAME}.",
         )
+
+
+class NANDProgramFailed(FatalError):
+    """Raised when the stub reports a NAND P_FAIL (program failed, 0xCA00).
+
+    Indicates the chip set the P_FAIL bit after a page program operation.
+    Per W25N01GV app-note: mark the block bad and retry on the next block.
+    """
+
+    def __init__(self, message):
+        FatalError.__init__(self, message)
+
+
+class NANDEraseFailed(FatalError):
+    """Raised when the stub reports a NAND E_FAIL (erase failed, 0xCB00).
+
+    Indicates the chip set the E_FAIL bit after a block erase operation.
+    Per W25N01GV app-note: mark the block bad and retry on the next block.
+    """
+
+    def __init__(self, message):
+        FatalError.__init__(self, message)
 
 
 class UnsupportedCommandError(RuntimeError):

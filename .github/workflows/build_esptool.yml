@@ -34,19 +34,13 @@ jobs:
       EFUSE_DIR: ./espefuse/efuse_defs/
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python 3.13
-        uses: actions/setup-python@v5
-        if: (matrix.platform != 'linux-armv7') || contains(github.ref_name, 'dev')
+        uses: actions/setup-python@v6
+        if: matrix.platform != 'linux-armv7'
         with:
           python-version: "3.13"
-      - name: Patch version for dev releases
-        if: contains(github.ref_name, 'dev')
-        run: |
-          echo "Patching version for dev release: ${{ github.ref_name }}"
-          python ci/patch_dev_release.py --version ${{ github.ref_name }} esptool/__init__.py
-          git diff
       - name: Build with PyInstaller
         uses: espressif/python-binary-action@master
         with:
@@ -68,7 +62,7 @@ jobs:
           additional-args: "--collect-submodules=rich._unicode_data --collect-submodules=bitstring"
 
       - name: Archive artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.DISTPATH }}
           path: ${{ env.DISTPATH }}

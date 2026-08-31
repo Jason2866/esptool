@@ -6,6 +6,7 @@
 
 from collections import Counter
 from dataclasses import dataclass, field
+
 import esptool
 from esptool.logger import log
 
@@ -50,7 +51,7 @@ class EfuseBlocksBase:
         list_of_names = []
         for block in self.BLOCKS:
             blk = self.get(block)
-            if blk.id > 0:
+            if blk.key_purpose or blk.id > 0:
                 if blk.name:
                     list_of_names.append(blk.name)
                 if blk.alias:

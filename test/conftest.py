@@ -1,5 +1,6 @@
-import pytest
 import os
+
+import pytest
 
 
 def pytest_addoption(parser):
@@ -51,6 +52,12 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers",
         "quick_test: mark esptool tests checking basic functionality.",
+    )
+
+    config.addinivalue_line(
+        "markers",
+        "linux_host_test: host tests not run on Windows CI "
+        "(hardware, SoftHSM, or not validated on Windows).",
     )
 
 

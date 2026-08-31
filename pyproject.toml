@@ -34,6 +34,7 @@
     dependencies = [
         "bitstring>=3.1.6,!=4.2.0",
         "cryptography>=43.0.0",
+        "cryptography<49.0.0; platform_system == 'Darwin' and platform_machine == 'x86_64'",
         "pyserial>=3.3",
         "reedsolo>=1.5.3,<1.8",
         "PyYAML>=5.1",
@@ -79,7 +80,7 @@
 
 [tool.commitizen]
     name = "czespressif"
-    version = "5.2.0"
+    version = "5.3.1"
     update_changelog_on_bump = true
     tag_format = "v$version"
     changelog_start_rev = "v4.2.1"
@@ -125,7 +126,7 @@
     # McCabe complexity (`C901`) by default.
     # Also enable pyupgrade (`UP`) rules for Python modernization, except UP032
     # UP032: Use f-string instead of .format() call - excluded to avoid automatic conversion
-    select = ['E', 'F', 'W', 'UP']
+    select = ['E', 'F', 'W', 'UP', 'I']
     ignore = ["E203", "UP032"]
 
     # Allow fix for all enabled rules (when `--fix`) is provided.
@@ -157,3 +158,6 @@
     quote-style = "double"
     indent-style = "space"
     docstring-code-format = true
+
+[tool.pytest.ini_options]
+addopts = "-sv --junitxml=test/report.xml --color=yes"

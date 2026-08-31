@@ -5,10 +5,10 @@
 
 import struct
 
-from .esp32c3 import ESP32C3ROM
 from ..loader import ESPLoader, StubMixin
 from ..logger import log
 from ..util import FatalError, NotSupportedError
+from .esp32c3 import ESP32C3ROM
 
 
 class ESP32C6ROM(ESP32C3ROM):
@@ -63,9 +63,6 @@ class ESP32C6ROM(ESP32C3ROM):
     PURPOSE_VAL_XTS_AES128_KEY = 4
 
     FLASH_ENCRYPTED_WRITE_ALIGN = 16
-
-    UARTDEV_BUF_NO = 0x4087F580  # Variable in ROM .bss which indicates the port in use
-    UARTDEV_BUF_NO_USB_JTAG_SERIAL = 3  # The above var when USB-JTAG/Serial is used
 
     DR_REG_LP_WDT_BASE = 0x600B1C00
     RTC_CNTL_WDTCONFIG0_REG = DR_REG_LP_WDT_BASE + 0x0  # LP_WDT_RWDT_CONFIG0_REG

@@ -6,10 +6,10 @@
 import struct
 from time import sleep
 
-from .esp32 import ESP32ROM
 from ..loader import ESPLoader, StubMixin
 from ..logger import log
 from ..util import FatalError, NotSupportedError
+from .esp32 import ESP32ROM
 
 
 class ESP32P4ROM(ESP32ROM):
@@ -95,22 +95,6 @@ class ESP32P4ROM(ESP32ROM):
     PMU_0P1A_TARGET0_0 = 0xFF << 23
     PMU_0P1A_FORCE_TIEH_SEL_0 = 1 << 7
     PMU_DATE_REG = DR_REG_PMU_BASE + 0x3FC
-
-    @property
-    def UARTDEV_BUF_NO(self):
-        """Variable .bss.UartDev.buff_uart_no in ROM .bss
-        which indicates the port in use.
-        """
-        BUF_UART_NO_OFFSET = 24
-
-        BSS_UART_DEV_ADDR = 0x4FF3FEB0 if self.get_chip_revision() < 300 else 0x4FFBFEB0
-        return BSS_UART_DEV_ADDR + BUF_UART_NO_OFFSET
-
-    # The value from UARTDEV_BUF_NO when USB-OTG is used
-    UARTDEV_BUF_NO_USB_OTG = 5
-
-    # The value from UARTDEV_BUF_NO when USB-JTAG/Serial is used
-    UARTDEV_BUF_NO_USB_JTAG_SERIAL = 6
 
     MEMORY_MAP = [
         [0x00000000, 0x00010000, "PADDING"],
@@ -258,26 +242,10 @@ class ESP32P4ROM(ESP32ROM):
     def _post_connect(self):
         if self.uses_usb_otg():
             self.ESP_RAM_BLOCK = self.USB_RAM_BLOCK
-        if not self.sync_stub_detected:  # Don't run if stub is reused
-            self.disable_watchdogs()
         if not self.secure_download_mode:
+            if not self.sync_stub_detected:  # Don't run if stub is reused
+                self.disable_watchdogs()
             self.power_on_flash()  # Needs to be powered on before attach_flash()
-
-    def uses_usb_otg(self):
-        """
-        Check the UARTDEV_BUF_NO register to see if USB-OTG console is being used
-        """
-        if self.secure_download_mode:
-            return False  # can't detect native USB in secure download mode
-        return self.get_uart_no() == self.UARTDEV_BUF_NO_USB_OTG
-
-    def uses_usb_jtag_serial(self):
-        """
-        Check the UARTDEV_BUF_NO register to see if USB-JTAG/Serial is being used
-        """
-        if self.secure_download_mode:
-            return False  # can't detect USB-JTAG/Serial in secure download mode
-        return self.get_uart_no() == self.UARTDEV_BUF_NO_USB_JTAG_SERIAL
 
     def disable_watchdogs(self):
         # When USB-JTAG/Serial is used, the RTC WDT and SWD watchdog are not reset

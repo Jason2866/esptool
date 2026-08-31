@@ -6,14 +6,13 @@
 
 from io import IOBase
 from typing import BinaryIO
-from esptool.logger import log
+
 import rich_click as click
 
 import espsecure
 import esptool
+from esptool.logger import log
 
-from . import fields
-from .mem_definition import EfuseDefineBlocks
 from .. import util
 from ..base_operations import (
     BaseCommands,
@@ -23,6 +22,8 @@ from ..base_operations import (
     add_show_sensitive_info_option,
     protect_options,
 )
+from . import fields
+from .mem_definition import EfuseDefineBlocks
 
 
 class ESP32H21Commands(BaseCommands):
@@ -227,15 +228,6 @@ class ESP32H21Commands(BaseCommands):
                 log.print(f"\t'{block.key_purpose_name}' is already '{keypurpose}'.")
                 if self.efuses[block.key_purpose_name].is_writeable():
                     disable_wr_protect_key_purpose = True
-
-            if keypurpose == "ECDSA_KEY":
-                if self.efuses["ECDSA_FORCE_USE_HARDWARE_K"].get() == 0:
-                    # For ECDSA key purpose block permanently enable
-                    # the hardware TRNG supplied k mode (most secure mode)
-                    log.print("\tECDSA_FORCE_USE_HARDWARE_K: 0 -> 1")
-                    self.efuses["ECDSA_FORCE_USE_HARDWARE_K"].save(1)
-                else:
-                    log.print("\tECDSA_FORCE_USE_HARDWARE_K is already '1'")
 
             if disable_wr_protect_key_purpose:
                 log.print(f"\tDisabling write to '{block.key_purpose_name}'...")

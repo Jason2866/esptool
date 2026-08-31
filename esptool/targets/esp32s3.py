@@ -6,10 +6,10 @@
 import struct
 from time import sleep
 
-from .esp32 import ESP32ROM
 from ..loader import ESPLoader, StubMixin
 from ..logger import log
 from ..util import FatalError, NotSupportedError
+from .esp32 import ESP32ROM
 
 
 class ESP32S3ROM(ESP32ROM):
@@ -76,10 +76,6 @@ class ESP32S3ROM(ESP32ROM):
     PURPOSE_VAL_XTS_AES256_KEY_1 = 2
     PURPOSE_VAL_XTS_AES256_KEY_2 = 3
     PURPOSE_VAL_XTS_AES128_KEY = 4
-
-    UARTDEV_BUF_NO = 0x3FCEF14C  # Variable in ROM .bss which indicates the port in use
-    UARTDEV_BUF_NO_USB_OTG = 3  # The above var when USB-OTG is used
-    UARTDEV_BUF_NO_USB_JTAG_SERIAL = 4  # The above var when USB-JTAG/Serial is used
 
     RTCCNTL_BASE_REG = 0x60008000
     RTC_CNTL_SWD_CONF_REG = RTCCNTL_BASE_REG + 0x00B4
@@ -311,22 +307,6 @@ class ESP32S3ROM(ESP32ROM):
             else 0
         )
 
-    def uses_usb_otg(self):
-        """
-        Check the UARTDEV_BUF_NO register to see if USB-OTG console is being used
-        """
-        if self.secure_download_mode:
-            return False  # can't detect native USB in secure download mode
-        return self.get_uart_no() == self.UARTDEV_BUF_NO_USB_OTG
-
-    def uses_usb_jtag_serial(self):
-        """
-        Check the UARTDEV_BUF_NO register to see if USB-JTAG/Serial is being used
-        """
-        if self.secure_download_mode:
-            return False  # can't detect USB-JTAG/Serial in secure download mode
-        return self.get_uart_no() == self.UARTDEV_BUF_NO_USB_JTAG_SERIAL
-
     def disable_watchdogs(self):
         # When USB-JTAG/Serial is used, the RTC WDT and SWD watchdog are not reset
         # and can then reset the board during flashing. Disable them.
@@ -348,7 +328,8 @@ class ESP32S3ROM(ESP32ROM):
     def _post_connect(self):
         if self.uses_usb_otg():
             self.ESP_RAM_BLOCK = self.USB_RAM_BLOCK
-        if not self.sync_stub_detected:  # Don't run if stub is reused
+        if not self.secure_download_mode and not self.sync_stub_detected:
+            # Don't run if stub is reused
             self.disable_watchdogs()
 
     def watchdog_reset(self):

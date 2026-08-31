@@ -25,7 +25,9 @@
 #       because of a long delay (~6 seconds) after resetting the FPGA.
 #       This is not necessary when using other images than ESP32
 
+import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -40,8 +42,9 @@ TEST_DIR = os.path.abspath(os.path.dirname(__file__))
 IMAGES_DIR = os.path.join(TEST_DIR, "images", "efuse")
 S_IMAGES_DIR = os.path.join(TEST_DIR, "secure_images")
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 try:
     from espefuse import SUPPORTED_CHIPS
@@ -262,6 +265,33 @@ class TestReadCommands(EfuseTestCase):
     def test_summary_json(self):
         self.espefuse_py("summary --format json")
 
+    def test_summary_json_raw_value(self):
+        output = self.espefuse_py("summary --format json")
+        start = output.find("{")
+        assert start >= 0, "JSON object not found in summary --format json output"
+        data = json.loads(output[start:])
+        assert data
+        hex_pat = re.compile(r"^0x[0-9a-f]+$")
+        for name, entry in data.items():
+            assert "raw_value" in entry, f"missing raw_value for {name!r}"
+            raw = entry["raw_value"]
+            assert isinstance(raw, str) and hex_pat.match(raw), (
+                f"raw_value for {name!r} must be a 0x-prefixed lowercase hex string, "
+                f"got {raw!r}"
+            )
+            efuse_type = entry["efuse_type"]
+            hex_digits = len(raw) - 2
+            if efuse_type.startswith("bytes"):
+                assert hex_digits == 2 * (entry["bit_len"] // 8), (
+                    f"bytes field {name!r}: raw_value length mismatch "
+                    f"(bit_len={entry['bit_len']}, raw={raw!r})"
+                )
+            else:
+                assert hex_digits == (entry["bit_len"] + 3) // 4, (
+                    f"non-bytes field {name!r}: raw_value nibble count "
+                    f"(bit_len={entry['bit_len']}, raw={raw!r})"
+                )
+
     def test_summary_filter(self):
         self.espefuse_py("summary MAC")
         self.espefuse_py("summary --format value_only MAC")
@@ -315,6 +345,41 @@ class TestReadProtectionCommands(EfuseTestCase):
             cmd = "read-protect-efuse \
                    BLOCK_KEY0_LOW_128"
             count_protects = 1
+        elif Command(arg_chip, "burn-key").does_not_support("BLOCK_KEY5"):
+            self.espefuse_py(
+                "burn-efuse \
+                KEY_PURPOSE_0 HMAC_UP \
+                KEY_PURPOSE_1 XTS_AES_128_KEY \
+                KEY_PURPOSE_2 XTS_AES_128_KEY \
+                KEY_PURPOSE_3 HMAC_DOWN_ALL \
+                KEY_PURPOSE_4 HMAC_DOWN_JTAG"
+            )
+            cmd = "read-protect-efuse \
+                   BLOCK_KEY0 \
+                   BLOCK_KEY1 \
+                   BLOCK_KEY2 \
+                   BLOCK_KEY3 \
+                   BLOCK_KEY4"
+            count_protects = 5
+        elif arg_chip == "esp32c61":
+            # ESP32-C61 does not support HMAC, use other read-protected purposes
+            self.espefuse_py(
+                "burn-efuse \
+                KEY_PURPOSE_0 XTS_AES_128_KEY \
+                KEY_PURPOSE_1 XTS_AES_128_KEY \
+                KEY_PURPOSE_2 XTS_AES_128_KEY \
+                KEY_PURPOSE_3 ECDSA_KEY \
+                KEY_PURPOSE_4 ECDSA_KEY \
+                KEY_PURPOSE_5 ECDSA_KEY"
+            )
+            cmd = "read-protect-efuse \
+                   BLOCK_KEY0 \
+                   BLOCK_KEY1 \
+                   BLOCK_KEY2 \
+                   BLOCK_KEY3 \
+                   BLOCK_KEY4 \
+                   BLOCK_KEY5"
+            count_protects = 6
         else:
             self.espefuse_py(
                 "burn-efuse \
@@ -341,11 +406,17 @@ class TestReadProtectionCommands(EfuseTestCase):
         arg_chip == "esp32p4", reason="BLOCK_SYS_DATA2 is used by ADC calib"
     )
     def test_read_protect_efuse2(self):
+        if arg_chip not in ["esp32", "esp32c2"] and Command(
+            arg_chip, "burn-key"
+        ).does_not_support("BLOCK_KEY5"):
+            self.espefuse_py("burn-efuse KEY_PURPOSE_0 HMAC_UP")
         self.espefuse_py("write-protect-efuse RD_DIS")
         if arg_chip == "esp32":
             efuse_name = "CODING_SCHEME"
         elif arg_chip == "esp32c2":
             efuse_name = "BLOCK_KEY0_HI_128"
+        elif Command(arg_chip, "burn-key").does_not_support("BLOCK_KEY5"):
+            efuse_name = "BLOCK_KEY0"
         else:
             efuse_name = "BLOCK_SYS_DATA2"
         self.espefuse_py(
@@ -382,19 +453,32 @@ class TestReadProtectionCommands(EfuseTestCase):
                 ret_code=2,
             )
         else:
+            has_block_key5 = not Command(arg_chip, "burn-key").does_not_support(
+                "BLOCK_KEY5"
+            )
             key1_purpose = (
                 "USER"
                 if arg_chip in ["esp32p4", "esp32c61", "esp32c5", "esp32h4", "esp32e22"]
+                or not has_block_key5
                 else "RESERVED"
             )
-            self.espefuse_py(
-                f"burn-key BLOCK_KEY0 {IMAGES_DIR}/256bit USER \
+            # ESP32-C61 does not support HMAC, use another read-protected purpose
+            read_protected_purpose = (
+                "XTS_AES_128_KEY" if arg_chip == "esp32c61" else "HMAC_UP"
+            )
+            burn_key_cmd = f"burn-key BLOCK_KEY0 {IMAGES_DIR}/256bit USER \
                 BLOCK_KEY1 {IMAGES_DIR}/256bit {key1_purpose} \
                 BLOCK_KEY2 {IMAGES_DIR}/256bit SECURE_BOOT_DIGEST0 \
                 BLOCK_KEY3 {IMAGES_DIR}/256bit SECURE_BOOT_DIGEST1 \
-                BLOCK_KEY4 {IMAGES_DIR}/256bit SECURE_BOOT_DIGEST2 \
-                BLOCK_KEY5 {IMAGES_DIR}/256bit HMAC_UP"
-            )
+                BLOCK_KEY4 {IMAGES_DIR}/256bit "
+            if has_block_key5:
+                burn_key_cmd += (
+                    f"SECURE_BOOT_DIGEST2 BLOCK_KEY5 "
+                    f"{IMAGES_DIR}/256bit {read_protected_purpose}"
+                )
+            else:
+                burn_key_cmd += read_protected_purpose
+            self.espefuse_py(burn_key_cmd)
             self.espefuse_py(
                 "read-protect-efuse BLOCK_KEY0",
                 check_msg="A fatal error occurred: "
@@ -421,11 +505,16 @@ class TestReadProtectionCommands(EfuseTestCase):
             )
             self.espefuse_py(
                 "read-protect-efuse BLOCK_KEY4",
-                check_msg="A fatal error occurred: "
-                "BLOCK_KEY4 must be readable, stop this operation!",
-                ret_code=2,
+                check_msg=(
+                    None
+                    if not has_block_key5
+                    else "A fatal error occurred: "
+                    "BLOCK_KEY4 must be readable, stop this operation!"
+                ),
+                ret_code=0 if not has_block_key5 else 2,
             )
-            self.espefuse_py("read-protect-efuse BLOCK_KEY5")
+            if has_block_key5:
+                self.espefuse_py("read-protect-efuse BLOCK_KEY5")
 
     @pytest.mark.skipif(
         arg_chip != "esp32",
@@ -465,6 +554,16 @@ class TestWriteProtectionCommands(EfuseTestCase):
             efuse_lists = """RD_DIS KEY_PURPOSE_0 SECURE_BOOT_KEY_REVOKE0
                            SPI_BOOT_CRYPT_CNT"""
             efuse_lists2 = "RD_DIS KEY_PURPOSE_0 KEY_PURPOSE_2"
+        elif Command(arg_chip, "burn-key").does_not_support("BLOCK_KEY5"):
+            efuse_lists = """RD_DIS
+                           SECURE_BOOT_KEY_REVOKE0 SECURE_BOOT_KEY_REVOKE1
+                           SECURE_BOOT_KEY_REVOKE2 KEY_PURPOSE_0 KEY_PURPOSE_1
+                           KEY_PURPOSE_2 KEY_PURPOSE_3 KEY_PURPOSE_4
+                           SECURE_BOOT_EN
+                           MAC
+                           BLOCK_USR_DATA BLOCK_KEY0 BLOCK_KEY1
+                           BLOCK_KEY2 BLOCK_KEY3 BLOCK_KEY4"""
+            efuse_lists2 = "RD_DIS"
         else:
             efuse_lists = """RD_DIS
                            SECURE_BOOT_KEY_REVOKE0 SECURE_BOOT_KEY_REVOKE1
@@ -1108,6 +1207,10 @@ class TestBurnKeyCommands(EfuseTestCase):
         Command(arg_chip, "burn-key").does_not_support("XTS_AES_256_KEY"),
         reason="512 bit keys not supported on this chip",
     )
+    @pytest.mark.skipif(
+        Command(arg_chip, "burn-key").does_not_support("BLOCK_KEY5"),
+        reason="This test needs 6 key blocks",
+    )
     def test_burn_key_512bit_non_consecutive_blocks(self):
         # Burn efuses separately to test different kinds
         # of "key used" detection criteria
@@ -1150,6 +1253,10 @@ class TestBurnKeyCommands(EfuseTestCase):
     @pytest.mark.skipif(
         Command(arg_chip, "burn-key").does_not_support("XTS_AES_256_KEY"),
         reason="512 bit keys not supported on this chip",
+    )
+    @pytest.mark.skipif(
+        Command(arg_chip, "burn-key").does_not_support("BLOCK_KEY5"),
+        reason="This test needs 6 key blocks",
     )
     def test_burn_key_512bit_non_consecutive_blocks_loop_around(self):
         self.espefuse_py(
@@ -1436,16 +1543,39 @@ class TestBurnBlockDataCommands(EfuseTestCase):
             "The 'offset' option is not applicable when a few blocks are passed.",
             ret_code=2,
         )
-        self.espefuse_py(
-            f"burn-block-data BLOCK0 {IMAGES_DIR}/192bit --offset 33",
-            check_msg="A fatal error occurred: Invalid offset: the block0 only holds",
-            ret_code=2,
-        )
-        self.espefuse_py(
-            f"burn-block-data BLOCK0 {IMAGES_DIR}/256bit --offset 4",
-            check_msg="A fatal error occurred: Data does not fit:",
-            ret_code=2,
-        )
+        if arg_chip == "esp32s31":
+            self.espefuse_py(
+                f"burn-block-data BLOCK0 {IMAGES_DIR}/192bit --offset 37",
+                check_msg="A fatal error occurred: Invalid offset: "
+                "the block0 only holds",
+                ret_code=2,
+            )
+            self.espefuse_py(
+                f"burn-block-data BLOCK0 {IMAGES_DIR}/256bit --offset 5",
+                check_msg="A fatal error occurred: Data does not fit:",
+                ret_code=2,
+            )
+        else:
+            self.espefuse_py(
+                f"burn-block-data BLOCK0 {IMAGES_DIR}/192bit --offset 33",
+                check_msg="A fatal error occurred: Invalid offset: "
+                "the block0 only holds",
+                ret_code=2,
+            )
+            self.espefuse_py(
+                f"burn-block-data BLOCK0 {IMAGES_DIR}/256bit --offset 4",
+                check_msg="A fatal error occurred: Data does not fit:",
+                ret_code=2,
+            )
+
+    @pytest.mark.skipif(arg_chip != "esp32s31", reason="ESP32-S31-only")
+    def test_burn_block0_data_above_256_bits(self):
+        self.espefuse_py(f"burn-block-data BLOCK0 {IMAGES_DIR}/64bit --offset 28")
+        output = self.espefuse_py("-d summary")
+        assert (
+            "[0 ] read_regs: 00000000 00000000 00000000 00000000 "
+            "00000000 00000000 00000000 00000001 0000000c"
+        ) in output
 
     @pytest.mark.skipif(arg_chip != "esp32", reason="ESP32-only")
     def test_burn_block_data_with_offset_for_3_key_blocks(self):
@@ -2053,9 +2183,9 @@ class TestPublicAPI(EfuseTestCase):
 
     def test_close_port_on_init_failure(self):
         """Test that port is closed when init_commands fails during get_efuses."""
+        import esptool
         from espefuse import init_commands
         from espefuse.efuse.base_operations import BaseCommands
-        import esptool
 
         # Create a mock ESP object with a mock port
         mock_esp = MagicMock(spec=esptool.ESPLoader)

@@ -12,10 +12,10 @@ jobs:
 
     steps:
     - name: Checkout ref commit
-      uses: actions/checkout@master
+      uses: actions/checkout@v6
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@master
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
 
@@ -47,18 +47,16 @@ jobs:
         esp_rfc2217_server --help
 
     - name: Test esptool and components
-      run: |
-        pytest -m host_test
-        pytest test/test_espsecure_hsm.py
+      run: pytest -m host_test
 
   check_stubs:
       runs-on: ubuntu-latest
       steps:
         - name: Checkout
-          uses: actions/checkout@master
+          uses: actions/checkout@v6
 
         - name: Set up Python 3.14
-          uses: actions/setup-python@master
+          uses: actions/setup-python@v6
           with:
             python-version: 3.14
 

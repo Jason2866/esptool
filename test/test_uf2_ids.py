@@ -1,10 +1,8 @@
 import json
 
-from conftest import need_to_install_package_err
-
 import pytest
-
 import requests
+from conftest import need_to_install_package_err
 
 try:
     from esptool.targets import CHIP_DEFS
@@ -15,6 +13,9 @@ except ImportError:
 FAMILIES_URL = (
     "https://raw.githubusercontent.com/microsoft/uf2/master/utils/uf2families.json"
 )
+
+# Chips esptool supports but we do not track UF2 family IDs for.
+EXCLUDED_CHIPS = ["esp32e22"]
 
 
 @pytest.fixture(scope="class")
@@ -43,9 +44,11 @@ def test_check_uf2(uf2_json):
     """Check if all non-beta chip definition has UF2 family id in esptool
     and also in Microsoft repo
     """
-    # remove beta chip definitions
+    # remove beta chip definitions and intentionally untracked chips
     esptool_chips = set(
-        [chip.upper() for chip in CHIP_DEFS.keys() if "beta" not in chip]
+        chip.upper()
+        for chip in CHIP_DEFS.keys()
+        if "beta" not in chip and chip not in EXCLUDED_CHIPS
     )
     microsoft_repo_chips = set([chip["short_name"] for chip in uf2_json])
     diff = esptool_chips.symmetric_difference(microsoft_repo_chips)

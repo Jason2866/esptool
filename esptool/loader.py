@@ -17,20 +17,20 @@ import time
 from .config import load_config_file
 from .logger import log
 from .reset import (
+    DEFAULT_RESET_DELAY,
     ClassicReset,
     CustomReset,
-    DEFAULT_RESET_DELAY,
     HardReset,
-    USBJTAGSerialReset,
     UnixTightReset,
+    USBJTAGSerialReset,
 )
 from .util import (
     FatalError,
+    NANDEraseFailed,
+    NANDProgramFailed,
     NotImplementedInROMError,
     NotSupportedError,
     UnsupportedCommandError,
-)
-from .util import (
     byte,
     get_key_from_value,
     hexify,
@@ -67,8 +67,8 @@ except TypeError:
     pass  # __doc__ returns None for pySerial
 
 try:
-    from serial.tools.list_ports_common import ListPortInfo  # noqa: F401
     import serial.tools.list_ports as list_ports
+    from serial.tools.list_ports_common import ListPortInfo  # noqa: F401
 except ImportError:
     log.error(
         f"The installed version ({serial.VERSION}) of pySerial appears to be too old "
@@ -112,6 +112,17 @@ DEFAULT_CONNECT_ATTEMPTS = cfg.getint("connect_attempts", 7)
 WRITE_BLOCK_ATTEMPTS = cfg.getint("write_block_attempts", 3)
 # Number of times to try opening the serial port
 DEFAULT_OPEN_PORT_ATTEMPTS = cfg.getint("open_port_attempts", 1)
+
+# Pages per NAND flash block for the supported NAND chip (W25N01GV).
+# Sent to the stub as part of the NAND read-flash parameter block.
+NAND_PAGES_PER_BLOCK = 64
+# Size of one NAND block in bytes (64 pages × 2 KB page = 128 KB).
+NAND_BLOCK_SIZE = 0x20000
+
+# Documentation page linked from connection/serial error messages.
+TROUBLESHOOTING_GUIDE_URL = (
+    "https://docs.espressif.com/projects/esptool/en/latest/troubleshooting.html"
+)
 
 
 def timeout_per_mb(seconds_per_mb, size_bytes):
@@ -158,7 +169,7 @@ def stub_and_esp32_function_only(func):
 class StubFlasher:
     STUB_DIR = os.path.join(os.path.dirname(__file__), "targets", "stub_flasher")
     # directories will be searched in the order of STUB_SUBDIRS
-    STUB_SUBDIRS = ["1", "2"]
+    STUB_SUBDIRS = ["2", "1"]
     STUB_VERSION_EXPLICIT = False
 
     def __init__(self, target, plugins=None):
@@ -230,12 +241,22 @@ class StubFlasher:
                         f"{chip_name} stub version {self.STUB_SUBDIRS[0]} doesn't "
                         f"exist, using {subdir} instead."
                     )
-                if subdir == "2":  # TODO: Remove this after legacy stub deprecation
-                    log.print("Using the new stub flasher.")
+                if subdir == "1":
+                    log.note(
+                        "Using the deprecated legacy stub flasher. "
+                        "Support for this stub will be removed in a future release."
+                    )
                 return json_path
         else:
-            raise FileNotFoundError(
-                f"Stub flasher JSON file for {chip_name} not found."
+            raise FatalError(
+                f"Flasher stub data is missing for {chip_name}. \n"
+                "This means the esptool installation is incomplete or broken - "
+                "stub JSON files were removed or a third-party distribution package "
+                "didn't ship them. "
+                "It is unlikely to be a defect in esptool itself.\n\n"
+                "Try reinstalling esptool or restoring the stub files "
+                "from the upstream source tree. As a workaround, "
+                "you can pass --no-stub (slower operation, fewer features)."
             )
 
     @classmethod
@@ -300,6 +321,18 @@ class ESPLoader:
         "RUN_USER_CODE": 0xD3,
         # Flash encryption encrypted data command
         "FLASH_ENCRYPT_DATA": 0xD4,
+        # NAND flash commands (stub only)
+        "SPI_NAND_ATTACH": 0xD5,
+        "SPI_NAND_READ_SPARE": 0xD6,
+        "SPI_NAND_WRITE_SPARE": 0xD7,
+        "SPI_NAND_READ_FLASH": 0xD8,
+        "SPI_NAND_WRITE_FLASH_BEGIN": 0xD9,
+        "SPI_NAND_WRITE_FLASH_DATA": 0xDA,
+        "SPI_NAND_ERASE_FLASH": 0xDB,
+        "SPI_NAND_ERASE_REGION": 0xDC,
+        # Not used by esptool; defined here for completeness (stub-only command)
+        "SPI_NAND_READ_PAGE_DEBUG": 0xDD,
+        "SPI_NAND_WRITE_FLASH_END": 0xDE,
     }
 
     # Response code(s) sent by ROM
@@ -344,8 +377,13 @@ class ESPLoader:
     # instead of the ROM bootloader
     sync_stub_detected = False
 
-    # Device PIDs
+    # Device VIDs, PIDs
+    ESPRESSIF_VID = 0x303A
+
     USB_JTAG_SERIAL_PID = 0x1001
+    HARDWARE_FLOW_CONTROL_VID_PIDS = [
+        (0x10C4, 0xEA64),  # SiLabs CP2102C USB to UART Bridge Controller
+    ]
 
     # Chip IDs that are no longer supported by esptool
     UNSUPPORTED_CHIPS = {
@@ -385,7 +423,7 @@ class ESPLoader:
         # Device-and-runtime-specific cache
         self.cache = {
             "flash_id": None,
-            "uart_no": None,
+            "usb_vid": None,
             "usb_pid": None,
             "security_info": None,
         }
@@ -470,7 +508,20 @@ class ESPLoader:
 
     def read(self):
         """Read a SLIP packet from the serial port"""
-        return next(self._slip_reader)
+        try:
+            return next(self._slip_reader)
+        except StopIteration:
+            # slip_reader only ever exits by raising (never returns), so a
+            # StopIteration here means the generator was already exhausted by an
+            # earlier serial-stream failure. Without this guard the bare
+            # StopIteration becomes an opaque "RuntimeError: generator raised
+            # StopIteration" (PEP 479) once it crosses a caller's generator,
+            # hiding the real cause. Re-raise something actionable instead.
+            raise FatalError(
+                "No more data to read from the serial port. This can have "
+                "many causes, for troubleshooting steps visit: "
+                f"{TROUBLESHOOTING_GUIDE_URL}"
+            ) from None
 
     def write(self, packet):
         """Write bytes to the serial port while performing SLIP escaping"""
@@ -653,43 +704,55 @@ class ESPLoader:
             val, _ = self.command()
             self.sync_stub_detected &= val == 0
 
-    def _get_pid(self):
-        if self.cache["usb_pid"] is not None:
-            return self.cache["usb_pid"]
+    def get_usb_vid_pid(self):
+        if self.cache["usb_vid"] is not None and self.cache["usb_pid"] is not None:
+            return self.cache["usb_vid"], self.cache["usb_pid"]
 
         if list_ports is None:
             log.print(
                 "\nListing all serial ports is currently not available. "
-                "Can't get device PID."
+                "Can't get device VID/PID."
             )
-            return
+            return None, None
         active_port = self._port.port
 
         # Pyserial only identifies regular ports, URL handlers are not supported
-        if not active_port.lower().startswith(("com", "/dev/")):
+        if not active_port.lower().startswith("com") and not os.path.isabs(active_port):
             log.print(
-                "\nDevice PID identification is only supported on "
-                "COM and /dev/ serial ports."
+                "\nDevice VID/PID identification is only supported on "
+                "COM and absolute device paths."
             )
-            return
-        # Return the real path if the active port is a symlink
-        if active_port.startswith("/dev/") and os.path.islink(active_port):
-            active_port = os.path.realpath(active_port)
-
+            return None, None
         active_ports = [active_port]
 
+        # Prefer the real path if the active port is a symlink, but keep the
+        # original name as a fallback for environments where pyserial lists it.
+        if os.path.islink(active_port):
+            resolved_port = os.path.realpath(active_port)
+            if os.path.exists(resolved_port) and resolved_port != active_port:
+                active_ports.insert(0, resolved_port)
+
         # The "cu" (call-up) device has to be used for outgoing communication on MacOS
-        if sys.platform == "darwin" and "tty" in active_port:
-            active_ports.append(active_port.replace("tty", "cu"))
+        if sys.platform == "darwin":
+            active_ports += [p.replace("tty", "cu") for p in active_ports if "tty" in p]
         ports = list_ports.comports()
-        for p in ports:
-            if p.device in active_ports:
-                self.cache["usb_pid"] = p.pid
-                return p.pid
+        found_without_ids = False
+        for lookup_port in active_ports:
+            for p in ports:
+                if p.device != lookup_port:
+                    continue
+                if p.vid is not None and p.pid is not None:
+                    self.cache["usb_vid"] = p.vid
+                    self.cache["usb_pid"] = p.pid
+                    return p.vid, p.pid
+                found_without_ids = True
+        if found_without_ids:
+            return None, None
         log.print(
-            f"\nFailed to get PID of a device on {active_port}, "
+            f"\nFailed to get VID/PID of a device on {active_port}, "
             "using standard reset sequence."
         )
+        return None, None
 
     def _connect_attempt(self, reset_strategy, mode="default-reset"):
         """A single connection attempt"""
@@ -780,21 +843,23 @@ class ESPLoader:
             delay = extra_delay = 7
 
         # USB-JTAG/Serial mode
-        if mode == "usb-reset" or self._get_pid() == self.USB_JTAG_SERIAL_PID:
+        if mode == "usb-reset" or self.get_usb_vid_pid()[1] == self.USB_JTAG_SERIAL_PID:
             return (USBJTAGSerialReset(self._port),)
+
+        flow_control = self.uses_hardware_flow_control()
 
         # USB-to-Serial bridge
         if os.name != "nt" and not self._port.name.startswith("rfc2217:"):
             return (
-                UnixTightReset(self._port, delay),
-                UnixTightReset(self._port, extra_delay),
-                ClassicReset(self._port, delay),
-                ClassicReset(self._port, extra_delay),
+                UnixTightReset(self._port, delay, flow_control),
+                UnixTightReset(self._port, extra_delay, flow_control),
+                ClassicReset(self._port, delay, flow_control),
+                ClassicReset(self._port, extra_delay, flow_control),
             )
 
         return (
-            ClassicReset(self._port, delay),
-            ClassicReset(self._port, extra_delay),
+            ClassicReset(self._port, delay, flow_control),
+            ClassicReset(self._port, extra_delay, flow_control),
         )
 
     def connect(
@@ -845,12 +910,9 @@ class ESPLoader:
                 )
             self._port.close()
             raise FatalError(
-                "Failed to connect to {}: {}"
+                f"Failed to connect to {self.CHIP_NAME}: {last_error}"
                 f"{additional_msg}"
-                "\nFor troubleshooting steps visit: "
-                "https://docs.espressif.com/projects/esptool/en/latest/troubleshooting.html".format(  # noqa E501
-                    self.CHIP_NAME, last_error
-                )
+                f"\nFor troubleshooting steps visit: {TROUBLESHOOTING_GUIDE_URL}"
             )
 
         if not detecting:
@@ -1201,29 +1263,25 @@ class ESPLoader:
             )
         return chip_id
 
-    def get_uart_no(self):
-        """
-        Read the UARTDEV_BUF_NO register to get the number of the currently used console
-        """
-        # Some ESP chips do not have this register
-        try:
-            if self.cache["uart_no"] is None:
-                self.cache["uart_no"] = self.read_reg(self.UARTDEV_BUF_NO) & 0xFF
-            return self.cache["uart_no"]
-        except AttributeError:
-            return None
-
     def uses_usb_jtag_serial(self):
         """
-        Check if the chip uses USB-Serial/JTAG mode.
+        True if the host sees this port as Espressif USB Serial/JTAG (VID/PID match).
         """
-        return False
+        return self.get_usb_vid_pid() == (self.ESPRESSIF_VID, self.USB_JTAG_SERIAL_PID)
 
     def uses_usb_otg(self):
         """
-        Check if the chip uses USB OTG mode.
+        True if the host sees this port as Espressif USB-OTG (VID/PID match).
         """
-        return False
+        return self.get_usb_vid_pid() == (self.ESPRESSIF_VID, self.IMAGE_CHIP_ID)
+
+    def uses_hardware_flow_control(self):
+        """
+        True if this port uses hardware flow control that esptool needs to know
+        about for resetting. This is determined by checking if the USB PID matches
+        known PIDs with hardware flow control.
+        """
+        return self.get_usb_vid_pid() in self.HARDWARE_FLOW_CONTROL_VID_PIDS
 
     def get_usb_mode(self):
         """
@@ -1354,12 +1412,15 @@ class ESPLoader:
 
         try:
             p = self.read()
-        except StopIteration:
+        except FatalError as e:
+            # A read failure here means the stub never sent its OHAI greeting
+            # (a frequent occurrence during stub development). Surface the
+            # stub-start context; the serial-level cause stays available via the
+            # `from e` chain.
             raise FatalError(
-                "Failed to start stub flasher. There was no response."
-                "\nTry increasing timeouts, for more information see: "
-                "https://docs.espressif.com/projects/esptool/en/latest/esptool/configuration-file.html"  # noqa E501
-            )
+                "Failed to start stub flasher. There was no response.\n"
+                f"For troubleshooting steps visit: {TROUBLESHOOTING_GUIDE_URL}"
+            ) from e
 
         if p != b"OHAI":
             raise FatalError(f"Failed to start stub flasher. Unexpected response: {p}")
@@ -1511,6 +1572,24 @@ class ESPLoader:
             timeout=timeout,
         )
 
+    @stub_function_only
+    def erase_nand_flash(self):
+        self.check_command(
+            "erase NAND flash",
+            self.ESP_CMDS["SPI_NAND_ERASE_FLASH"],
+            timeout=CHIP_ERASE_TIMEOUT,
+        )
+
+    @stub_function_only
+    def erase_nand_region(self, offset, size):
+        timeout = timeout_per_mb(ERASE_REGION_TIMEOUT_PER_MB, size)
+        self.check_command(
+            "erase NAND region",
+            self.ESP_CMDS["SPI_NAND_ERASE_REGION"],
+            struct.pack("<II", offset, size),
+            timeout=timeout,
+        )
+
     def read_flash_slow(self, offset, length, progress_fn) -> bytes:
         raise NotImplementedInROMError(self, self.read_flash_slow)
 
@@ -1553,6 +1632,100 @@ class ESPLoader:
             )
         return data
 
+    def read_flash_nand(self, offset, length, progress_fn=None) -> bytes:
+        """Read NAND flash via stub command ESP_SPI_NAND_READ_FLASH (0xD8).
+
+        Uses the same SLIP data-frame + ACK + MD5 wire protocol as NOR read_flash.
+        """
+        if not self.IS_STUB:
+            raise FatalError("NAND read_flash is only supported via the stub loader.")
+
+        self.check_command(
+            "read NAND flash",
+            self.ESP_CMDS["SPI_NAND_READ_FLASH"],
+            struct.pack(
+                "<IIII", offset, length, self.FLASH_SECTOR_SIZE, NAND_PAGES_PER_BLOCK
+            ),
+        )
+
+        prev_timeout = self._port.timeout
+        self._port.timeout = 10
+        data = b""
+        try:
+            while len(data) < length:
+                p = self.read()
+                data += p
+                data_len = len(data)
+                if data_len < length and len(p) < self.FLASH_SECTOR_SIZE:
+                    raise FatalError(
+                        f"Corrupt data, expected {self.FLASH_SECTOR_SIZE:#x} "
+                        f"bytes but received {len(p):#x} bytes."
+                    )
+                self.write(struct.pack("<I", data_len))
+                if progress_fn and (data_len % 1024 == 0 or data_len == length):
+                    progress_fn(data_len, length, offset)
+            if len(data) > length:
+                raise FatalError("Read more than expected.")
+
+            digest_frame = self.read()
+            if len(digest_frame) != 16:
+                raise FatalError(f"Expected digest, got: {hexify(digest_frame)}")
+            expected_digest = hexify(digest_frame).upper()
+            digest = hashlib.md5(data).hexdigest().upper()
+            if digest != expected_digest:
+                raise FatalError(
+                    f"Digest mismatch: expected {expected_digest}, got {digest}"
+                )
+        finally:
+            self._port.timeout = prev_timeout
+        return data
+
+    def write_flash_nand_begin(self, size, offset):
+        """Start NAND flash write (stub command). Same as flash_begin but for NAND."""
+        params = struct.pack(
+            "<IIII", offset, size, NAND_BLOCK_SIZE, self.FLASH_WRITE_SIZE
+        )
+        self.check_command(
+            "enter NAND flash download mode",
+            self.ESP_CMDS["SPI_NAND_WRITE_FLASH_BEGIN"],
+            params,
+        )
+
+    def write_flash_nand_block(self, data, seq, timeout=DEFAULT_TIMEOUT):
+        """Write one block to NAND flash (stub command). Same format as flash_block."""
+        for attempts_left in range(WRITE_BLOCK_ATTEMPTS - 1, -1, -1):
+            try:
+                self.check_command(
+                    f"write to NAND flash after seq {seq}",
+                    self.ESP_CMDS["SPI_NAND_WRITE_FLASH_DATA"],
+                    struct.pack("<IIII", len(data), seq, 0, 0) + data,
+                    self.checksum(data),
+                    timeout=timeout,
+                )
+                break
+            except (NANDProgramFailed, NANDEraseFailed):
+                # Chip-reported P_FAIL / E_FAIL — retrying is futile (the cell is
+                # bad). Surface immediately so the caller can mark the block bad.
+                raise
+            except FatalError:
+                if attempts_left:
+                    self.trace(
+                        f"block write failed, "
+                        f"retrying with {attempts_left} attempts left...".capitalize()
+                    )
+                else:
+                    raise
+
+    def write_flash_nand_finish(self, reboot=False, timeout=DEFAULT_TIMEOUT):
+        """End a NAND flash write session (stub plugin command)."""
+        pkt = struct.pack("<I", int(not reboot))
+        self.check_command(
+            "leave NAND flash download mode",
+            self.ESP_CMDS["SPI_NAND_WRITE_FLASH_END"],
+            pkt,
+            timeout=timeout,
+        )
+
     def flash_spi_attach(self, hspi_arg):
         """Send SPI attach command to enable the SPI flash pins
 
@@ -1568,6 +1741,88 @@ class ESPLoader:
             is_legacy = 0
             arg += struct.pack("BBBB", is_legacy, 0, 0, 0)
         self.check_command("configure SPI flash pins", self.ESP_CMDS["SPI_ATTACH"], arg)
+
+    def flash_spi_nand_attach(self, hspi_arg):
+        """Send SPI NAND attach command to enable the SPI NAND flash pins
+
+        Similar to flash_spi_attach but for NAND flash.
+        """
+        arg = struct.pack("<I", hspi_arg)
+        if not self.IS_STUB:
+            is_legacy = 0
+            arg += struct.pack("BBBB", is_legacy, 0, 0, 0)
+        val, data = self.command(self.ESP_CMDS["SPI_NAND_ATTACH"], arg)
+        # 2-byte response contract: data[0]=prot_reg, data[1]=status byte.
+        # Gate on data[1] (status) to match the normal ≥3-byte path.
+        if len(data) < 3:
+            if len(data) >= 2 and data[1] != 0:
+                raise FatalError.WithResult(
+                    "Failed to configure SPI NAND flash pins", data[0:2]
+                )
+            raise FatalError(
+                "Failed to configure SPI NAND flash pins. "
+                f"Only got {len(data)} byte response."
+            )
+        status_bytes = data[1:3]
+        if status_bytes[0] != 0:
+            raise FatalError.WithResult(
+                "Failed to configure SPI NAND flash pins", status_bytes
+            )
+        status_reg = (val >> 24) & 0xFF
+        mfr_id = (val >> 16) & 0xFF
+        dev_id = val & 0xFFFF
+        prot_reg = data[0]
+        # Known/tested NAND JEDEC IDs: (manufacturer, device) → description
+        KNOWN_NAND_IDS = {
+            (0xEF, 0xAA21): "Winbond W25N01GV (1Gbit)",
+        }
+        chip_desc = KNOWN_NAND_IDS.get((mfr_id, dev_id))
+        if chip_desc:
+            log.print(f"Detected NAND chip: {chip_desc}")
+        else:
+            raise FatalError(
+                f"Unrecognized NAND JEDEC ID (mfr={mfr_id:#04x}, dev={dev_id:#06x}).\n"
+                f"Only Winbond W25N01GV is supported."
+            )
+        self.trace(
+            f"NAND debug: status={status_reg:#04x}, JEDEC ID: "
+            f"mfr={mfr_id:#04x} dev={dev_id:#06x}, prot={prot_reg:#04x}"
+        )
+        if prot_reg != 0x00:
+            log.warning(
+                f"NAND protection register is {prot_reg:#04x} (expected 0x00); "
+                "program/erase may not persist."
+            )
+
+    def read_nand_spare(self, page_number):
+        """Read NAND flash spare area for a given page number.
+
+        Returns:
+            int: Only the first response word from the stub, which encodes the
+            first spare bytes in little-endian order (LSB = byte 0, i.e. the
+            bad-block marker).  Callers that want the bad-block marker should
+            use ``result & 0xFF``.
+        """
+        data = self.check_command(
+            "read NAND spare",
+            self.ESP_CMDS["SPI_NAND_READ_SPARE"],
+            struct.pack("<I", page_number),
+        )
+        return data
+
+    def write_nand_spare(self, page_number, is_bad):
+        """Write NAND flash spare area to mark bad blocks.
+
+        Returns:
+            int: Only the first response word echoed back by the stub (same
+            encoding as :meth:`read_nand_spare`).
+        """
+        data = self.check_command(
+            "write NAND spare",
+            self.ESP_CMDS["SPI_NAND_WRITE_SPARE"],
+            struct.pack("<IB", page_number, is_bad),
+        )
+        return data
 
     def flash_set_parameters(self, size):
         """Tell the ESP bootloader the parameters of the chip
@@ -1833,7 +2088,9 @@ class ESPLoader:
         if cfg_custom_hard_reset_sequence is not None:
             CustomReset(self._port, cfg_custom_hard_reset_sequence)()
         else:
-            HardReset(self._port, uses_usb)()
+            HardReset(
+                self._port, uses_usb, flow_control=self.uses_hardware_flow_control()
+            )()
 
     def soft_reset(self, stay_in_bootloader):
         if not self.IS_STUB:
