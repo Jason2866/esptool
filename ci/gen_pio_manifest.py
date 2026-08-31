@@ -9,11 +9,11 @@ import datetime
 MANIFEST_DATA = {
     "name": "tool-esptoolpy",
     "description": "A serial utility to communicate & flash code to Espressif chips",
-    "keywords": ["tools", "uploader", "pioarduino", "espressif", "esp8266", "esp32"],
+    "keywords": ["tools", "uploader", "tasmota", "espressif", "esp8266", "esp32"],
     "license": "GPL-2.0-or-later",
     "repository": {
         "type": "git",
-        "url": "https://github.com/pioarduino/esptool",
+        "url": "https://github.com/tasmota/esptool",
     },
 }
 
